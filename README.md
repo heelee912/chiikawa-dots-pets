@@ -6,7 +6,7 @@
 
 <img src="assets/promo.gif" alt="치이카와 3인방이 등장해 달리고 인사한 뒤 Codex 상태별 모션과 16방향 시선을 보여 주는 소개 영상" width="100%">
 
-[고화질 MP4로 보기 (1080p · 100fps)](assets/promo.mp4) · [설치하기](#설치) · [모션 둘러보기](#모션-둘러보기) · [English](#english)
+[고화질 MP4로 보기 (1080p · 100fps)](assets/promo.mp4) · [릴리즈 다운로드](https://github.com/heelee912/chiikawa-dots-pets/releases/latest) · [설치하기](#설치) · [모션 둘러보기](#모션-둘러보기) · [English](#english)
 
 </div>
 
@@ -56,8 +56,8 @@ curl -fsSL https://raw.githubusercontent.com/heelee912/chiikawa-dots-pets/main/i
 
 ### 직접 설치
 
-1. 이 저장소를 내려받습니다. (`Code` → `Download ZIP`)
-2. `pets` 안의 캐릭터 폴더를 통째로 Codex 펫 폴더에 복사합니다.
+1. [최신 릴리즈](https://github.com/heelee912/chiikawa-dots-pets/releases/latest)에서 `chiikawa-dots-pets-all.zip`이나 캐릭터별 zip을 내려받습니다.
+2. 캐릭터 폴더를 통째로 Codex 펫 폴더에 넣습니다. (캐릭터별 zip은 `pets/<펫 ID>/` 폴더를 만든 뒤 그 안에 풉니다.)
    - Windows: `%USERPROFILE%\.codex\pets\`
    - macOS · Linux: `~/.codex/pets/`
 3. 결과가 아래처럼 되면 됩니다.
