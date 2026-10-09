@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jua&family=Fredoka:wght@500;600;700&family=M+PLUS+Rounded+1c:wght@500;800&display=block" rel="stylesheet">
 <style>
-  html, body { margin: 0; background: #fff6ea; }
+  html, body { margin: 0; background: #fff8ee; }
   body { display: grid; place-items: center; min-height: 100vh; }
   canvas { width: min(100vw, 177.78vh); height: auto; display: block; }
 </style>
@@ -16,78 +16,87 @@
 <body>
 <canvas id="stage" width="1920" height="1080"></canvas>
 <script type="module">
-// Promo motion graphic for Chiikawa Dots Pets (eleven pets).
+// Promo motion graphic for Chiikawa Dots Pets.
 //
 // Every frame is a pure function of time (renderAt(ms)), so promo/render.py can step
 // a 10 ms clock and export frame-exact video while a browser can also play it live.
-// URL parameters: ?lang=ko|en|ja picks the caption language, ?export stops live
-// playback, ?calm freezes the ambient background (used for the smaller README GIF).
+// URL parameters: ?lang=ko|en|ja picks the caption language, ?export stops live playback.
 //
 // Sprite rules (the pets are owner-approved and must not change):
-// - cells come straight from pets/<id>/spritesheet.png at an integer 2x scale with
-//   nearest-neighbor sampling and integer positions
+// - cells come straight from pets/<id>/spritesheet.png at integer scales (1x, 2x, 3x)
+//   with nearest-neighbor sampling and integer positions
 // - every frame keeps the hold time recorded for that pet (promo/cast.json)
-// - a pet only changes motion at the end of a full cycle, or while a wipe hides it
+// - a pet only changes motion at the end of a full cycle, or while a puff hides it
+//
+// Layout rule for this cut: few pets per frame and plenty of empty space.
 
 const params = new URLSearchParams(location.search);
 const LANG = ['ko', 'en', 'ja'].includes(params.get('lang')) ? params.get('lang') : 'ko';
-const CALM = params.has('calm');
 
 const W = 1920, H = 1080;
 const CELL_W = 192, CELL_H = 208, FEET_IN_CELL = 198;
-const SCALE = 2;
 const DURATION_MS = 43000;
-
-const STATE_ROWS = { idle: 0, 'running-right': 1, 'running-left': 2, waving: 3, jumping: 4, failed: 5, waiting: 6, running: 7, review: 8 };
+const ROWS = { idle: 0, 'running-right': 1, 'running-left': 2, waving: 3, jumping: 4, failed: 5, waiting: 6, running: 7, review: 8 };
 
 // ---------- copy ----------
 const COPY = {
   ko: {
-    font: '"Jua", "Malgun Gothic", sans-serif',
-    subtitle: '치이카와 친구들 11명이 Codex 데스크톱 펫으로',
-    run: '화면 위를 뛰어다니고',
-    meet: '친구들을 소개할게요',
-    states: 'Codex 작업 상태마다 다른 모션',
-    look: '16방향으로 두리번두리번',
-    outro: '지금 데스크톱에 데려가세요',
+    font: '"Jua", "Malgun Gothic", sans-serif', weight: '',
+    subtitle: '치이카와 친구들 11명이 데스크톱 펫으로',
+    states: '작업 상태에 맞춰 반응해요',
+    look: '커서를 따라 두리번두리번',
+    run: '화면 위를 뛰어다녀요',
+    meet: '함께하는 친구들',
+    outro: '데스크톱에 데려가 보세요',
     footer: '비공식 팬 제작물 · Chiikawa © Nagano',
-    stateLabels: { running: '작업 중', waiting: '기다리는 중', review: '검토 중', failed: '앗, 실패', jumping: '완료!' },
-    name: pet => pet.nameKo, subName: pet => pet.nameEn,
+    project: 'my-project',
+    chip: { running: '작업 중', waiting: '확인이 필요해요', review: '검토 중', failed: '앗, 실패', jumping: '완료!' },
+    ask: '변경 사항을 적용할까요?', yes: '적용', no: '취소',
+    failedLine: '테스트 1개 실패', doneLine: '모든 작업 완료',
+    name: p => p.nameKo, sub: p => p.nameEn,
   },
   en: {
-    font: '"Fredoka", "Segoe UI", sans-serif',
-    subtitle: 'Eleven Chiikawa friends as Codex desktop pets',
+    font: '"Fredoka", "Segoe UI", sans-serif', weight: 600,
+    subtitle: 'Eleven Chiikawa friends as desktop pets',
+    states: 'They react to what Codex is doing',
+    look: 'They follow your cursor',
     run: 'They run across your screen',
-    meet: 'Meet all eleven',
-    states: 'A motion for every Codex state',
-    look: 'They look around in 16 directions',
+    meet: 'Meet the friends',
     outro: 'Bring them to your desktop',
     footer: 'Unofficial fan work · Chiikawa © Nagano',
-    stateLabels: { running: 'Working', waiting: 'Waiting for you', review: 'Reviewing', failed: 'Oops, failed', jumping: 'Done!' },
-    name: pet => pet.nameEn, subName: pet => pet.nameJa,
+    project: 'my-project',
+    chip: { running: 'Working', waiting: 'Needs your OK', review: 'Reviewing', failed: 'Oops, failed', jumping: 'Done!' },
+    ask: 'Apply these changes?', yes: 'Apply', no: 'Cancel',
+    failedLine: '1 test failed', doneLine: 'All tasks done',
+    name: p => p.nameEn, sub: p => p.nameJa,
   },
   ja: {
-    font: '"M PLUS Rounded 1c", "Yu Gothic", sans-serif',
-    subtitle: 'ちいかわの仲間11人がCodexのデスクトップペットに',
-    run: '画面の上を走りまわって',
-    meet: '仲間たちをご紹介',
-    states: 'Codexの作業状態ごとにちがう動き',
-    look: '16方向をきょろきょろ',
-    outro: 'いますぐデスクトップへ',
+    font: '"M PLUS Rounded 1c", "Yu Gothic", sans-serif', weight: 800,
+    subtitle: 'ちいかわの仲間11人がデスクトップペットに',
+    states: 'Codexの作業にあわせて反応',
+    look: 'カーソルを追いかけてきょろきょろ',
+    run: '画面の上を走りまわる',
+    meet: 'なかまたち',
+    outro: 'デスクトップにお迎えしよう',
     footer: '非公式ファンメイド · Chiikawa © Nagano',
-    stateLabels: { running: '作業中', waiting: 'まってるよ', review: 'レビュー中', failed: 'あっ、失敗', jumping: 'できた！' },
-    name: pet => pet.nameJa, subName: pet => pet.nameEn,
+    project: 'my-project',
+    chip: { running: '作業中', waiting: '確認してね', review: 'レビュー中', failed: 'あっ、失敗', jumping: 'できた！' },
+    ask: '変更を適用しますか？', yes: '適用', no: 'キャンセル',
+    failedLine: 'テストが1件失敗', doneLine: 'ぜんぶ完了',
+    name: p => p.nameJa, sub: p => p.nameEn,
   },
 }[LANG];
 const FONT_EN = '"Fredoka", "Segoe UI", sans-serif';
+const FONT_JA = '"M PLUS Rounded 1c", sans-serif';
 const JA_NAMES = {
   chiikawa: 'ちいかわ', hachiware: 'ハチワレ', usagi: 'うさぎ', momonga: 'モモンガ', shisa: 'シーサー', rakko: 'ラッコ',
   kurimanju: 'くりまんじゅう', siren: 'セイレーン', furuhonya: '古本屋', anoko: 'あのこ', dekatsuyo: 'でかつよ',
 };
 
 const INK = '#5a463d';
-const INK_SOFT = '#9a8479';
-const STATE_COLORS = { running: '#7fb0de', waiting: '#efb24f', review: '#ad95e0', failed: '#ec8c8c', jumping: '#77c99a' };
+const INK_SOFT = '#a08b80';
+const CREAM = '#fff8ee';
+const STATE_COLORS = { running: '#7fb0de', waiting: '#efb24f', review: '#a98fe0', failed: '#ec8c8c', jumping: '#6fc496' };
 
 // ---------- helpers ----------
 const clamp01 = v => Math.max(0, Math.min(1, v));
@@ -96,594 +105,495 @@ const lerp = (a, b, k) => a + (b - a) * k;
 const easeOutCubic = k => 1 - Math.pow(1 - k, 3);
 const easeInCubic = k => k * k * k;
 const easeInOutCubic = k => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const easeInOutSine = k => -(Math.cos(Math.PI * k) - 1) / 2;
 const easeOutBack = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
-const easeOutElastic = k => k === 0 || k === 1 ? k : Math.pow(2, -10 * k) * Math.sin((k * 10 - 0.75) * (2 * Math.PI / 3)) + 1;
 const presence = (t, inMs, outMs, fade = 380) => Math.min(easeOutCubic(progress(t, inMs, inMs + fade)), 1 - easeInCubic(progress(t, outMs - fade, outMs)));
-function seededRandom(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
 
-// ---------- cast and timing ----------
-let CAST = [];
+// ---------- cast and motion tracks ----------
+let CAST = {};
 const sheets = {};
-
-function cycleMs(pet, state) { return pet.holdsMs[state].reduce((a, b) => a + b, 0); }
-
+const cycleMs = (pet, state) => pet.holdsMs[state].reduce((a, b) => a + b, 0);
 function columnAt(holds, localMs) {
   const total = holds.reduce((a, b) => a + b, 0);
   let t = ((localMs % total) + total) % total;
   for (let i = 0; i < holds.length; i++) { if (t < holds[i]) return i; t -= holds[i]; }
   return holds.length - 1;
 }
-
-// Turns a list of {t, state, mode} requests into exact segments. "cycle" waits for the
-// running motion to finish its current loop, "restart" switches at once (only used while
-// the pet is hidden or appearing), "look" segments are static poses and switch at once.
+// "cycle" waits for the current loop to end; "restart" switches at once (only while hidden).
 function buildTrack(pet, events) {
   const segments = [];
   let current = null;
   for (const ev of events) {
-    let switchAt = ev.t;
+    let at = ev.t;
     if (current && ev.mode === 'cycle' && current.state !== 'look') {
       const length = cycleMs(pet, current.state);
-      const loops = Math.max(1, Math.ceil((ev.t - current.start) / length));
-      switchAt = current.start + loops * length;
+      at = current.start + Math.max(1, Math.ceil((ev.t - current.start) / length)) * length;
     }
-    if (current) { current.end = switchAt; segments.push(current); }
-    current = { state: ev.state, start: switchAt, end: Infinity };
+    if (current) { current.end = at; segments.push(current); }
+    current = { state: ev.state, start: at, end: Infinity };
   }
-  if (current) segments.push(current);
+  segments.push(current);
   return segments;
 }
-
-function segmentAt(track, t) {
-  for (const seg of track) if (t >= seg.start && t < seg.end) return seg;
-  return null;
-}
-
-// ---------- layout ----------
-// A two-row group photo: the back row stands higher so every face stays visible.
-const FORMATION = {
-  momonga: [210, 680], kurimanju: [510, 680], rakko: [810, 680], dekatsuyo: [1110, 680], furuhonya: [1410, 680], anoko: [1710, 680],
-  siren: [300, 950], chiikawa: [630, 950], hachiware: [960, 950], usagi: [1290, 950], shisa: [1620, 950],
-};
-const DRAW_ORDER = ['momonga', 'kurimanju', 'rakko', 'dekatsuyo', 'furuhonya', 'anoko', 'siren', 'chiikawa', 'hachiware', 'usagi', 'shisa'];
-const REVEAL_ORDER = ['hachiware', 'chiikawa', 'usagi', 'siren', 'shisa', 'rakko', 'dekatsuyo', 'kurimanju', 'furuhonya', 'momonga', 'anoko'];
-
-const T = {
-  revealStart: 900, revealStep: 130,
-  runStart: 5300, runTurn: 9100, runStop: 11500,
-  wipe1: 12500, wipe2: 22500, wipeHalf: 320,
-  statesIdle: 22500, states: [['running', 23000], ['waiting', 24800], ['review', 26600], ['failed', 28400], ['jumping', 30200]], statesEnd: 32000,
-  look: 32400, lookEnd: 37000,
-  outro: 37000, outroJump: 37500,
-};
-const revealTime = id => T.revealStart + REVEAL_ORDER.indexOf(id) * T.revealStep;
-
-const TRACKS = {};
-function buildTracks() {
-  for (const pet of CAST) {
-    const reveal = revealTime(pet.id);
-    const order = DRAW_ORDER.indexOf(pet.id);
-    TRACKS[pet.id] = buildTrack(pet, [
-      { t: reveal, state: 'jumping', mode: 'restart' },
-      { t: reveal + 1, state: 'idle', mode: 'cycle' },
-      { t: T.runStart, state: 'running-right', mode: 'cycle' },
-      { t: T.runTurn, state: 'running-left', mode: 'cycle' },
-      { t: T.runStop, state: 'idle', mode: 'cycle' },
-      { t: T.statesIdle, state: 'idle', mode: 'restart' },
-      ...T.states.map(([state, t]) => ({ t, state, mode: 'cycle' })),
-      { t: T.statesEnd, state: 'idle', mode: 'cycle' },
-      { t: T.look, state: 'look', mode: 'cycle' },
-      { t: T.lookEnd, state: 'idle', mode: 'restart' },
-      { t: T.outroJump + order * 70, state: 'jumping', mode: 'cycle' },
-      { t: T.outroJump + order * 70 + 1, state: 'idle', mode: 'cycle' },
-    ]);
-  }
-}
-
-// ---------- ground scroll for the running parade ----------
-// Positive velocity moves the ground left, so the pets appear to run right.
-function groundVelocity(t) {
-  const v = 0.62;
-  if (t < T.runStart) return 0;
-  if (t < T.runStart + 700) return v * easeInOutCubic(progress(t, T.runStart, T.runStart + 700));
-  if (t < T.runTurn) return v;
-  if (t < T.runTurn + 900) return lerp(v, -v, easeInOutCubic(progress(t, T.runTurn, T.runTurn + 900)));
-  if (t < T.runStop) return -v;
-  if (t < T.runStop + 700) return -v * (1 - easeInOutCubic(progress(t, T.runStop, T.runStop + 700)));
-  return 0;
-}
-const SCROLL = (() => {
-  const steps = DURATION_MS / 10 + 2;
-  const table = new Float64Array(steps);
-  for (let i = 1; i < steps; i++) table[i] = table[i - 1] + groundVelocity((i - 1) * 10) * 10;
-  return table;
-})();
-const scrollAt = t => { const i = Math.max(0, Math.min(SCROLL.length - 2, Math.floor(t / 10))); return lerp(SCROLL[i], SCROLL[i + 1], (t - i * 10) / 10); };
+const segmentAt = (track, t) => track.find(s => t >= s.start && t < s.end) || null;
 
 // ---------- drawing primitives ----------
-function drawText(text, x, y, { font = COPY.font, size, color = INK, alpha = 1, weight = '', align = 'center' }) {
+function text(str, x, y, { size, color = INK, alpha = 1, align = 'center', font = COPY.font, weight = COPY.weight }) {
   if (alpha <= 0) return;
   ctx.save();
   ctx.globalAlpha *= alpha;
   ctx.font = `${weight} ${size}px ${font}`;
-  ctx.textAlign = align;
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
+  ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillStyle = color;
+  ctx.fillText(str, x, y);
   ctx.restore();
 }
-
-function roundedRect(x, y, w, h, r) {
+function roundRect(x, y, w, h, r) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
-
-function drawPill(cx, cy, w, h, fill, { alpha = 1, stroke = null, shadow = true } = {}) {
+function pill(cx, cy, w, h, fill, { alpha = 1, stroke = null, shadow = true } = {}) {
   ctx.save();
   ctx.globalAlpha *= alpha;
-  if (shadow) { ctx.shadowColor = 'rgba(122, 90, 70, 0.16)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8; }
-  roundedRect(cx - w / 2, cy - h / 2, w, h, h / 2);
-  ctx.fillStyle = fill;
-  ctx.fill();
+  if (shadow) { ctx.shadowColor = 'rgba(122,90,70,0.14)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8; }
+  roundRect(cx - w / 2, cy - h / 2, w, h, h / 2); ctx.fillStyle = fill; ctx.fill();
   ctx.shadowColor = 'transparent';
-  if (stroke) { ctx.lineWidth = 5; ctx.strokeStyle = stroke; ctx.stroke(); }
+  if (stroke) { ctx.lineWidth = 4; ctx.strokeStyle = stroke; ctx.stroke(); }
   ctx.restore();
 }
+function withScale(cx, cy, s, fn) { ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy); fn(); ctx.restore(); }
 
-function withScale(cx, cy, s, fn) {
-  ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy); fn(); ctx.restore();
-}
-
-function drawCell(petId, row, column, feetX, feetY) {
-  const left = Math.round(feetX - CELL_W * SCALE / 2);
-  const top = Math.round(feetY - FEET_IN_CELL * SCALE);
+function drawCell(id, row, column, feetX, feetY, scale) {
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(sheets[petId], column * CELL_W, row * CELL_H, CELL_W, CELL_H, left, top, CELL_W * SCALE, CELL_H * SCALE);
+  ctx.drawImage(sheets[id], column * CELL_W, row * CELL_H, CELL_W, CELL_H,
+    Math.round(feetX - CELL_W * scale / 2), Math.round(feetY - FEET_IN_CELL * scale), CELL_W * scale, CELL_H * scale);
   ctx.imageSmoothingEnabled = true;
 }
-
-function drawShadow(x, y, alpha = 1) {
-  ctx.save();
-  ctx.globalAlpha = 0.15 * alpha;
-  ctx.fillStyle = '#7b5d4e';
-  ctx.beginPath();
-  ctx.ellipse(x, y + 4, 128, 20, 0, 0, Math.PI * 2);
-  ctx.fill();
+function shadow(x, y, scale, alpha = 1) {
+  ctx.save(); ctx.globalAlpha = 0.14 * alpha; ctx.fillStyle = '#7b5d4e';
+  ctx.beginPath(); ctx.ellipse(x, y + 3, 62 * scale, 10 * scale, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+}
+// A soft cloud that covers a pet while it changes, so no motion is cut where you can see it.
+function puff(x, y, scale, t, at, color = '#ffffff') {
+  const k = progress(t, at - 220, at + 260);
+  if (k <= 0 || k >= 1) return;
+  const grow = k < 0.46 ? easeOutCubic(k / 0.46) : 1;
+  const fade = k < 0.46 ? 1 : 1 - easeInCubic((k - 0.46) / 0.54);
+  ctx.save(); ctx.globalAlpha = fade; ctx.fillStyle = color;
+  const cy = y - 100 * scale;
+  for (const [dx, dy, r] of [[0, 0, 96], [-62, 26, 64], [62, 26, 64], [-34, -48, 58], [40, -44, 56], [0, 60, 66]]) {
+    ctx.beginPath(); ctx.arc(x + dx * scale * 0.9, cy + dy * scale * 0.9, r * scale * 0.9 * grow, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.restore();
 }
 
-// ---------- background ----------
-const BLOBS = [
-  { x: 0.18, y: 0.28, r: 620, color: [251, 211, 220], phase: 0 },
-  { x: 0.82, y: 0.22, r: 560, color: [207, 226, 245], phase: 2.1 },
-  { x: 0.55, y: 0.82, r: 700, color: [251, 233, 180], phase: 4.2 },
-];
-const DOTS = (() => {
-  const rand = seededRandom(11);
-  const palette = ['#fbd3dc', '#cfe2f5', '#fbe9b4', '#e4dcf6', '#d7efe0'];
-  return Array.from({ length: 36 }, () => ({ x: rand() * W, y: rand() * H * 0.62, r: 6 + rand() * 26, color: palette[Math.floor(rand() * palette.length)], depth: 0.25 + rand() * 0.5, wobble: rand() * 6.28 }));
-})();
-const GROUND_MARKS = (() => {
-  const rand = seededRandom(5);
-  return Array.from({ length: 26 }, (_, i) => ({ x: i * 150 + rand() * 60, lane: i % 2, kind: Math.floor(rand() * 3) }));
-})();
-
-function drawBackground(t) {
-  const ambient = CALM ? 0 : t;
-  const gradient = ctx.createLinearGradient(0, 0, 0, H);
-  gradient.addColorStop(0, '#fff8ee');
-  gradient.addColorStop(1, '#fdf0ec');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, W, H);
-
-  for (const blob of BLOBS) {
-    const x = blob.x * W + Math.sin(ambient / 5200 + blob.phase) * 70;
-    const y = blob.y * H + Math.cos(ambient / 6100 + blob.phase) * 50;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, blob.r);
-    g.addColorStop(0, `rgba(${blob.color.join(',')},0.55)`);
-    g.addColorStop(1, `rgba(${blob.color.join(',')},0)`);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  // the floor: a soft plane that the group stands on
-  const floor = ctx.createLinearGradient(0, 540, 0, H);
-  floor.addColorStop(0, 'rgba(255,255,255,0)');
-  floor.addColorStop(0.35, 'rgba(255,255,255,0.65)');
-  floor.addColorStop(1, 'rgba(255,244,236,0.9)');
-  ctx.fillStyle = floor;
-  ctx.fillRect(0, 540, W, H - 540);
-
-  const scroll = scrollAt(t);
-  ctx.globalAlpha = 0.5;
-  for (const dot of DOTS) {
-    const span = W + 160;
-    const x = (((dot.x - scroll * dot.depth + Math.sin(ambient / 2400 + dot.wobble) * 10) % span) + span) % span - 80;
-    ctx.fillStyle = dot.color;
-    ctx.beginPath(); ctx.arc(x, dot.y, dot.r, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  // ground marks only show while the parade is moving
-  const groundAlpha = Math.min(presence(t, T.runStart - 200, T.runStop + 1100, 500), 1);
-  if (groundAlpha > 0) {
-    const span = 26 * 150;
-    for (const mark of GROUND_MARKS) {
-      const y = mark.lane ? 970 : 700;
-      const x = (((mark.x - scroll) % span) + span) % span - 200;
-      ctx.save();
-      ctx.globalAlpha = groundAlpha * 0.55;
-      ctx.strokeStyle = '#e3cdbd'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-      if (mark.kind === 0) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 46, y); ctx.stroke(); }
-      if (mark.kind === 1) { for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(x + k * 9, y + 6); ctx.lineTo(x + k * 13, y - 10); ctx.stroke(); } }
-      if (mark.kind === 2) { ctx.fillStyle = '#ead8ca'; ctx.beginPath(); ctx.ellipse(x, y, 10, 6, 0, 0, Math.PI * 2); ctx.fill(); }
-      ctx.restore();
-    }
-  }
+// ---------- backgrounds ----------
+function plainBackground() {
+  ctx.fillStyle = CREAM; ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W / 2, H * 0.62, 50, W / 2, H * 0.62, 1100);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function deskBackground() {
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#fdf1ec'); g.addColorStop(1, '#eef1fb');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // a quiet dock at the bottom of the "screen"
+  ctx.save(); ctx.globalAlpha = 0.9;
+  roundRect(W / 2 - 300, H - 70, 600, 46, 23); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
+  ['#f2a3b3', '#7fb0de', '#efc75e', '#6fc496', '#a98fe0'].forEach((c, i) => {
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(W / 2 - 160 + i * 80, H - 47, 12, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.restore();
 }
 
 // ---------- captions ----------
-function drawCaption(t, inMs, outMs, text, y = 112) {
-  const alpha = presence(t, inMs, outMs, 420);
-  if (alpha <= 0) return;
-  const rise = (1 - easeOutCubic(progress(t, inMs, inMs + 560))) * 28;
-  drawText(text, W / 2, y + rise, { size: 74, alpha, weight: LANG === 'ja' ? 800 : (LANG === 'en' ? 600 : '') });
+function fitSize(str, size, maxWidth, font = COPY.font, weight = COPY.weight) {
+  ctx.save(); ctx.font = `${weight} ${size}px ${font}`;
+  const width = ctx.measureText(str).width; ctx.restore();
+  return width > maxWidth ? Math.floor(size * maxWidth / width) : size;
 }
-
-// "Chiikawa Dots Pets" with letters that drop in one after another.
-function drawTitle(t, inMs, outMs, y, size) {
-  const alpha = presence(t, inMs, outMs, 420);
+function caption(t, inMs, outMs, str, { x = W / 2, y = 120, align = 'center', size = 62, maxWidth = 1500 } = {}) {
+  const alpha = presence(t, inMs, outMs, 450);
   if (alpha <= 0) return;
-  const title = 'Chiikawa Dots Pets';
+  const rise = (1 - easeOutCubic(progress(t, inMs, inMs + 600))) * 24;
+  text(str, x, y + rise, { size: fitSize(str, size, maxWidth), alpha, align });
+}
+function title(t, inMs, outMs, y, size) {
+  const alpha = presence(t, inMs, outMs, 450);
+  if (alpha <= 0) return;
+  const word = 'Chiikawa Dots Pets';
   ctx.save();
   ctx.font = `700 ${size}px ${FONT_EN}`;
-  const widths = [...title].map(ch => ctx.measureText(ch).width);
-  const total = widths.reduce((a, b) => a + b, 0);
-  let x = W / 2 - total / 2;
-  const palette = ['#5a463d', '#5a463d', '#5a463d'];
-  [...title].forEach((ch, i) => {
-    const k = easeOutBack(progress(t, inMs + i * 28, inMs + i * 28 + 520));
-    const drop = (1 - k) * -60;
-    ctx.globalAlpha = alpha * clamp01(k * 1.4);
-    ctx.fillStyle = ch === ' ' ? 'transparent' : palette[i % palette.length];
-    ctx.textBaseline = 'middle';
-    ctx.fillText(ch, x, y + drop);
+  const widths = [...word].map(ch => ctx.measureText(ch).width);
+  let x = W / 2 - widths.reduce((a, b) => a + b, 0) / 2;
+  [...word].forEach((ch, i) => {
+    const k = easeOutBack(progress(t, inMs + i * 32, inMs + i * 32 + 560));
+    ctx.globalAlpha = alpha * clamp01(k * 1.5);
+    ctx.fillStyle = INK; ctx.textBaseline = 'middle';
+    ctx.fillText(ch, x, y + (1 - k) * -46);
     x += widths[i];
   });
   ctx.restore();
 }
 
-// ---------- reveal and effects ----------
-function revealRadius(id, t) {
-  const r = revealTime(id);
-  const k = progress(t, r - 100, r + 360);
-  return k >= 1 ? null : Math.max(0, easeOutBack(k)) * 260;
+// ---------- scene 1: opening, one pet and a lot of air (0 - 4700) ----------
+const OPEN = { start: 0, end: 4700, petIn: 350 };
+function drawOpening(t) {
+  plainBackground();
+  title(t, 900, OPEN.end - 150, 300, 116);
+  text(COPY.subtitle, W / 2, 392, { size: 40, color: INK_SOFT, alpha: presence(t, 1500, OPEN.end - 150, 450) });
+  const pet = CAST.chiikawa;
+  const appear = easeOutCubic(progress(t, OPEN.petIn, OPEN.petIn + 700));
+  if (appear <= 0) return;
+  const x = 960, y = 900 + Math.round((1 - appear) * 40);
+  shadow(x, 900, 3, appear);
+  ctx.save(); ctx.globalAlpha = appear;
+  drawCell('chiikawa', ROWS.idle, columnAt(pet.holdsMs.idle, t - OPEN.petIn), x, y, 3);
+  ctx.restore();
 }
 
-function drawRevealBurst(pet, t) {
-  const r = revealTime(pet.id);
-  const k = progress(t, r - 100, r + 620);
-  if (k <= 0 || k >= 1) return;
-  const [x, y] = FORMATION[pet.id];
-  const cy = y - 170;
-  ctx.save();
-  ctx.globalAlpha = (1 - k) * 0.9;
-  ctx.strokeStyle = pet.color;
-  ctx.lineWidth = 12 * (1 - k) + 2;
-  ctx.beginPath(); ctx.arc(x, cy, 70 + easeOutCubic(k) * 200, 0, Math.PI * 2); ctx.stroke();
-  for (let i = 0; i < 8; i++) {
-    const a = i * Math.PI / 4 + 0.3;
-    const d = 120 + easeOutCubic(k) * 150;
-    ctx.fillStyle = pet.color;
-    ctx.beginPath(); ctx.arc(x + Math.cos(a) * d, cy + Math.sin(a) * d * 0.8, 9 * (1 - k) + 2, 0, Math.PI * 2); ctx.fill();
+// ---------- scene 2 and 3: a desktop window the pets sit on (4500 - 21000) ----------
+const DESK = { start: 4500, end: 21000 };
+const WIN = { x: 410, y: 470, w: 1100, h: 520 };
+const PERCH = { x: 1330, y: WIN.y, scale: 2 };     // a pet sits on the window's top edge
+const DESK_STATES = [
+  { state: 'running', pet: 'hachiware', at: 5300 },
+  { state: 'waiting', pet: 'usagi', at: 7500 },
+  { state: 'review', pet: 'chiikawa', at: 9700 },
+  { state: 'failed', pet: 'momonga', at: 11900 },
+  { state: 'jumping', pet: 'shisa', at: 14100 },
+];
+const LOOK = { pet: 'rakko', at: 16300, cursorIn: 16700, end: 20600 };
+
+function deskStateAt(t) {
+  let current = null;
+  for (const s of DESK_STATES) if (t >= s.at) current = s;
+  return t >= LOOK.at ? null : current;
+}
+
+function drawWindow(t) {
+  const appear = easeOutCubic(progress(t, DESK.start, DESK.start + 600));
+  const { x, w, h } = WIN;
+  const y = WIN.y + Math.round((1 - appear) * 30);
+  ctx.save(); ctx.globalAlpha = appear;
+  ctx.shadowColor = 'rgba(90,70,60,0.16)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
+  roundRect(x, y, w, h, 26); ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.shadowColor = 'transparent';
+  // title bar
+  ctx.save(); roundRect(x, y, w, h, 26); ctx.clip();
+  ctx.fillStyle = '#f7f3ef'; ctx.fillRect(x, y, w, 58);
+  ctx.restore();
+  ['#f3a7a0', '#f2cd7c', '#9bd3a6'].forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x + 34 + i * 26, y + 29, 8, 0, Math.PI * 2); ctx.fill(); });
+  text(COPY.project, x + 130, y + 30, { size: 22, color: INK_SOFT, align: 'left', font: FONT_EN, weight: 600 });
+  // sidebar and code lines
+  ctx.fillStyle = '#faf7f4'; ctx.fillRect(x, y + 58, 190, h - 58);
+  for (let i = 0; i < 6; i++) { ctx.fillStyle = i === 1 ? '#eadfd7' : '#f0e8e2'; roundRect(x + 26, y + 96 + i * 46, 130 - (i % 3) * 22, 16, 8); ctx.fill(); }
+  ctx.restore();
+  drawWindowContent(t, x, y, appear);
+}
+
+const CODE_LINES = [[0, 360], [24, 280], [24, 420], [48, 220], [48, 330], [24, 260], [0, 180], [0, 300]];
+function drawWindowContent(t, x, y, alpha) {
+  const state = deskStateAt(t);
+  const left = x + 230, top = y + 96;
+  // code that types itself in while the pet is working
+  const typed = state ? (state.state === 'running' ? progress(t, state.at, state.at + 1800) * CODE_LINES.length : CODE_LINES.length) : CODE_LINES.length;
+  CODE_LINES.forEach(([indent, width], i) => {
+    const k = clamp01(typed - i);
+    if (k <= 0) return;
+    ctx.save(); ctx.globalAlpha = alpha * (0.35 + 0.65 * (state && state.state === 'review' && i === Math.floor(progress(t, state.at, state.at + 1900) * CODE_LINES.length) ? 1 : 0.6));
+    ctx.fillStyle = i % 3 === 0 ? '#c9dcef' : (i % 3 === 1 ? '#f1d4c4' : '#e3dcef');
+    roundRect(left + indent, top + i * 40, width * k, 18, 9); ctx.fill();
+    ctx.restore();
+    if (state && state.state === 'review' && t > state.at + i * 220 + 200) {
+      text('✓', left + indent + width + 26, top + i * 40 + 10, { size: 22, color: STATE_COLORS.review, font: FONT_EN, weight: 700, alpha: alpha * easeOutCubic(progress(t, state.at + i * 220 + 200, state.at + i * 220 + 400)) });
+    }
+  });
+  if (!state) return;
+  const local = t - state.at;
+  // the status chip in the title bar
+  const chipW = 260, chipX = x + WIN.w - chipW / 2 - 24, chipY = y + 29;
+  const pop = 0.85 + 0.15 * easeOutBack(progress(local, 0, 420));
+  withScale(chipX, chipY, pop, () => {
+    pill(chipX, chipY, chipW, 40, '#ffffff', { alpha, shadow: false, stroke: '#efe6df' });
+    const pulse = 0.5 + 0.5 * Math.sin(t / 160);
+    ctx.save(); ctx.globalAlpha = alpha * (0.5 + 0.5 * pulse); ctx.fillStyle = STATE_COLORS[state.state];
+    ctx.beginPath(); ctx.arc(chipX - chipW / 2 + 22, chipY, 7, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    text(COPY.chip[state.state], chipX + 12, chipY + 1, { size: 21, alpha, weight: LANG === 'ko' ? '' : 700 });
+  });
+  // an inline card for the states that ask or report something
+  const cardIn = easeOutCubic(progress(local, 250, 650));
+  if (cardIn <= 0) return;
+  const cardX = left, cardY = y + WIN.h - 120 + Math.round((1 - cardIn) * 16);
+  const cardW = WIN.w - 230 - 40;
+  ctx.save(); ctx.globalAlpha = alpha * cardIn;
+  if (state.state === 'waiting') {
+    roundRect(cardX, cardY, cardW, 84, 18); ctx.fillStyle = '#fff6e3'; ctx.fill();
+    text(COPY.ask, cardX + 28, cardY + 42, { size: 26, align: 'left', weight: LANG === 'ko' ? '' : 700 });
+    const buttonWeight = LANG === 'ko' ? '' : 700;
+    ctx.save(); ctx.font = `${buttonWeight} 22px ${COPY.font}`;
+    const noW = Math.max(104, ctx.measureText(COPY.no).width + 44), yesW = Math.max(110, ctx.measureText(COPY.yes).width + 48);
+    ctx.restore();
+    const noX = cardX + cardW - 22 - noW / 2, yesX = noX - noW / 2 - 14 - yesW / 2;
+    pill(yesX, cardY + 42, yesW, 44, STATE_COLORS.waiting, { shadow: false });
+    text(COPY.yes, yesX, cardY + 43, { size: 22, color: '#ffffff', weight: buttonWeight });
+    pill(noX, cardY + 42, noW, 44, '#ffffff', { shadow: false, stroke: '#efe1cf' });
+    text(COPY.no, noX, cardY + 43, { size: 22, color: INK_SOFT, weight: buttonWeight });
+  } else if (state.state === 'failed') {
+    roundRect(cardX, cardY, cardW, 84, 18); ctx.fillStyle = '#fdeceb'; ctx.fill();
+    text('×', cardX + 40, cardY + 42, { size: 34, color: STATE_COLORS.failed, font: FONT_EN, weight: 700 });
+    text(COPY.failedLine, cardX + 74, cardY + 42, { size: 26, align: 'left', weight: LANG === 'ko' ? '' : 700 });
+  } else if (state.state === 'jumping') {
+    roundRect(cardX, cardY, cardW, 84, 18); ctx.fillStyle = '#e9f7ee'; ctx.fill();
+    text('✓', cardX + 40, cardY + 43, { size: 30, color: STATE_COLORS.jumping, font: FONT_EN, weight: 700 });
+    text(COPY.doneLine, cardX + 74, cardY + 42, { size: 26, align: 'left', weight: LANG === 'ko' ? '' : 700 });
   }
   ctx.restore();
 }
 
-// Dust puffs come from each runner's own run segment, so nothing is stored between frames.
-function drawDust(pet, t) {
-  const [x, y] = FORMATION[pet.id];
-  for (const seg of TRACKS[pet.id]) {
-    if (seg.state !== 'running-right' && seg.state !== 'running-left') continue;
-    const behind = seg.state === 'running-right' ? -1 : 1;
-    const first = Math.ceil(seg.start / 170) * 170;
-    for (let spawn = first; spawn < Math.min(seg.end, t); spawn += 170) {
-      const age = t - spawn;
-      if (age > 620) continue;
-      const k = age / 620;
-      const px = x + behind * 110 - (scrollAt(t) - scrollAt(spawn));
-      ctx.save();
-      ctx.globalAlpha = (1 - k) * 0.55;
-      ctx.fillStyle = '#ecdccf';
-      ctx.beginPath(); ctx.arc(px, y - 8 - k * 30, 11 + k * 22, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-  }
+// Desk pets: each state gets its own pet; a puff hides every swap.
+const DESK_ACTORS = [];
+function buildDeskActors() {
+  DESK_STATES.forEach((s, i) => {
+    const end = i + 1 < DESK_STATES.length ? DESK_STATES[i + 1].at : LOOK.at;
+    DESK_ACTORS.push({ id: s.pet, from: s.at, to: end, track: buildTrack(CAST[s.pet], [{ t: s.at, state: s.state, mode: 'restart' }]) });
+  });
+  DESK_ACTORS.push({ id: LOOK.pet, from: LOOK.at, to: DESK.end, look: true,
+    track: buildTrack(CAST[LOOK.pet], [{ t: LOOK.at, state: 'idle', mode: 'restart' }, { t: LOOK.cursorIn + 200, state: 'look', mode: 'cycle' }, { t: LOOK.end, state: 'idle', mode: 'restart' }]) });
 }
 
-// ---------- the group photo scenes ----------
-const STAR_ORBIT = { cx: 960, cy: 600, rx: 860, ry: 400 };
-function starAt(t) {
-  const k = progress(t, T.look + 200, T.lookEnd - 200);
-  const angle = -Math.PI / 2 + easeInOutCubic(k) * Math.PI * 2;
-  return { x: STAR_ORBIT.cx + Math.cos(angle) * STAR_ORBIT.rx, y: STAR_ORBIT.cy + Math.sin(angle) * STAR_ORBIT.ry };
+// cursor: glides in, circles the perched pet once, then rests
+function cursorAt(t) {
+  const k = easeInOutSine(progress(t, LOOK.cursorIn, LOOK.end - 300));
+  const angle = Math.PI * 0.85 + k * Math.PI * 2;      // starts lower left of the pet, goes clockwise
+  const cx = PERCH.x, cy = PERCH.y - 170;
+  return { x: cx + Math.cos(angle) * 560, y: cy + Math.sin(angle) * 300 };
 }
-
-function lookCell(pet, t) {
-  const [x, y] = FORMATION[pet.id];
-  const star = starAt(t);
-  const degrees = (Math.atan2(star.x - x, -(star.y - (y - 170))) * 180 / Math.PI + 360) % 360; // 0 = up, clockwise
+function lookCell(t) {
+  const c = cursorAt(t);
+  const degrees = (Math.atan2(c.x - PERCH.x, -(c.y - (PERCH.y - 170))) * 180 / Math.PI + 360) % 360;
   const index = Math.round(degrees / 22.5) % 16;
   return { row: 9 + Math.floor(index / 8), column: index % 8 };
 }
+function drawCursor(t) {
+  const alpha = presence(t, LOOK.cursorIn, LOOK.end + 200, 300);
+  if (alpha <= 0) return;
+  const { x, y } = cursorAt(t);
+  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.scale(1.7, 1.7);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 34); ctx.lineTo(9, 26); ctx.lineTo(15, 39); ctx.lineTo(21, 36); ctx.lineTo(15, 23); ctx.lineTo(26, 23); ctx.closePath();
+  ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.lineWidth = 2.4; ctx.lineJoin = 'round'; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.restore();
+}
 
-function formationVisible(t) { return t < T.wipe1 || t >= T.wipe2; }
-
-function drawFormation(t) {
-  if (!formationVisible(t)) return;
-  for (const id of DRAW_ORDER) {
-    const pet = CAST.find(p => p.id === id);
-    if (t < revealTime(id) - 100) continue;
-    const seg = segmentAt(TRACKS[id], t);
+function drawDeskPets(t) {
+  for (const actor of DESK_ACTORS) {
+    if (t < actor.from - 1 || t >= actor.to + 1) continue;
+    const pet = CAST[actor.id];
+    const seg = segmentAt(actor.track, t);
     if (!seg) continue;
-    const [x, y] = FORMATION[id];
-    const fade = 1 - easeInCubic(progress(t, DURATION_MS - 650, DURATION_MS - 80));
-    let cell;
-    if (seg.state === 'look') cell = lookCell(pet, t);
-    else cell = { row: STATE_ROWS[seg.state], column: columnAt(pet.holdsMs[seg.state], t - seg.start) };
-    ctx.save();
-    ctx.globalAlpha = fade;
-    const r = revealRadius(id, t);
-    if (r !== null) { ctx.beginPath(); ctx.arc(x, y - 170, r, 0, Math.PI * 2); ctx.clip(); }
-    drawShadow(x, y, fade);
-    drawCell(id, cell.row, cell.column, x, y);
-    ctx.restore();
-  }
-}
-
-function drawStar(t) {
-  const alpha = presence(t, T.look, T.lookEnd, 300);
-  if (alpha <= 0) return;
-  for (let i = 1; i <= 10; i++) {
-    const p = starAt(t - i * 32);
-    ctx.save(); ctx.globalAlpha = alpha * (1 - i / 11) * 0.45; ctx.fillStyle = '#f6b8c3';
-    ctx.beginPath(); ctx.arc(p.x, p.y, 15 - i, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-  }
-  const { x, y } = starAt(t);
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.translate(x, y); ctx.rotate(t / 380);
-  ctx.beginPath();
-  for (let i = 0; i < 10; i++) { const r = i % 2 === 0 ? 40 : 17; const a = i * Math.PI / 5 - Math.PI / 2; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
-  ctx.closePath();
-  ctx.fillStyle = '#ffd36e'; ctx.fill();
-  ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.strokeStyle = '#e7a93a'; ctx.stroke();
-  ctx.restore();
-}
-
-function stateIndexAt(t) {
-  let index = -1;
-  T.states.forEach(([, start], i) => { if (t >= start) index = i; });
-  return index;
-}
-
-function drawStatusPill(t) {
-  const alpha = presence(t, T.states[0][1] - 300, T.statesEnd + 300, 300);
-  if (alpha <= 0) return;
-  const index = Math.max(0, stateIndexAt(t));
-  const [state, start] = T.states[index];
-  const label = COPY.stateLabels[state];
-  const color = STATE_COLORS[state];
-  const cy = 214;
-  const pop = index === 0 ? easeOutBack(progress(t, start - 300, start + 200)) : 0.86 + 0.14 * easeOutElastic(progress(t, start, start + 700));
-  withScale(W / 2, cy, pop, () => {
-    drawPill(W / 2, cy, 520, 92, '#ffffff', { alpha });
-    const pulse = 0.5 + 0.5 * Math.sin(t / 150);
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.globalAlpha = alpha * (0.22 + pulse * 0.22);
-    ctx.beginPath(); ctx.arc(W / 2 - 200, cy, 24 + pulse * 6, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = alpha;
-    ctx.beginPath(); ctx.arc(W / 2 - 200, cy, 14, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-    const textAlpha = alpha * easeOutCubic(progress(t, start, start + 240));
-    drawText(label, W / 2 + 22, cy - 1, { size: 46, alpha: textAlpha, weight: LANG === 'ko' ? '' : 700 });
-  });
-  T.states.forEach(([chipState], i) => {
-    const active = i === index;
-    const x = W / 2 + (i - (T.states.length - 1) / 2) * 42;
-    ctx.save();
-    ctx.globalAlpha = alpha * (active ? 1 : 0.4);
-    ctx.fillStyle = active ? STATE_COLORS[chipState] : '#cdbbb0';
-    roundedRect(x - (active ? 17 : 7), 276 - 7, active ? 34 : 14, 14, 7);
-    ctx.fill();
-    ctx.restore();
-  });
-}
-
-const CONFETTI = (() => {
-  const rand = seededRandom(42);
-  const palette = ['#f2a3b3', '#7fb0de', '#efc75e', '#77c99a', '#ad95e0', '#f0a066'];
-  return Array.from({ length: 120 }, () => ({ angle: -Math.PI / 2 + (rand() - 0.5) * Math.PI * 1.3, speed: 0.7 + rand() * 1.0, spin: (rand() - 0.5) * 0.02, size: 10 + rand() * 14, color: palette[Math.floor(rand() * palette.length)], x: W / 2 + (rand() - 0.5) * 1500 }));
-})();
-function drawConfetti(elapsed, originY) {
-  if (elapsed < 0 || elapsed > 1700) return;
-  for (const p of CONFETTI) {
-    const x = p.x + Math.cos(p.angle) * p.speed * elapsed;
-    const y = originY + Math.sin(p.angle) * p.speed * elapsed + 0.0011 * elapsed * elapsed;
-    ctx.save();
-    ctx.globalAlpha = 1 - clamp01((elapsed - 1100) / 600);
-    ctx.translate(x, y); ctx.rotate(p.spin * elapsed);
-    ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
-    ctx.restore();
-  }
-}
-
-// ---------- roll call carousel ----------
-const CAROUSEL = { y: 820, spacing: 470, start: T.wipe1, holdMs: 600, glideMs: 300 };
-function carouselTravel(t) {
-  const local = t - CAROUSEL.start - 260;
-  if (local <= 0) return 0;
-  const step = CAROUSEL.holdMs + CAROUSEL.glideMs;
-  const k = Math.floor(local / step);
-  const inStep = local - k * step;
-  const glide = inStep < CAROUSEL.holdMs ? 0 : easeInOutCubic((inStep - CAROUSEL.holdMs) / CAROUSEL.glideMs);
-  return Math.min(CAST.length - 1, k + glide);
-}
-
-function drawCarousel(t) {
-  if (formationVisible(t)) return;
-  const travel = carouselTravel(t);
-  const focus = Math.round(travel);
-  const settle = 1 - Math.abs(travel - focus) * 2;
-
-  // spotlight behind the focused pet
-  const pet = CAST[focus];
-  ctx.save();
-  const glow = ctx.createRadialGradient(W / 2, CAROUSEL.y - 180, 30, W / 2, CAROUSEL.y - 180, 330);
-  glow.addColorStop(0, 'rgba(255,255,255,0.95)');
-  glow.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-  ctx.globalAlpha = 0.35 + 0.35 * clamp01(settle);
-  ctx.strokeStyle = pet.color; ctx.lineWidth = 10;
-  ctx.beginPath(); ctx.arc(W / 2, CAROUSEL.y - 190, 230, 0, Math.PI * 2); ctx.stroke();
-  ctx.restore();
-
-  CAST.forEach((p, i) => {
-    const x = Math.round(W / 2 + (i - travel) * CAROUSEL.spacing);
-    if (x < -260 || x > W + 260) return;
-    const holds = p.holdsMs.waving;
-    const column = columnAt(holds, t - CAROUSEL.start);
-    const distance = Math.abs(i - travel);
-    ctx.save();
-    ctx.globalAlpha = 1 - clamp01((distance - 1.2) / 1.6) * 0.55;
-    drawShadow(x, CAROUSEL.y);
-    drawCell(p.id, STATE_ROWS.waving, column, x, CAROUSEL.y);
-    ctx.restore();
-  });
-
-  // name card
-  const stepStart = CAROUSEL.start + 260 + focus * (CAROUSEL.holdMs + CAROUSEL.glideMs) - CAROUSEL.glideMs / 2;
-  const pop = easeOutBack(progress(t, stepStart, stepStart + 380));
-  const cardY = CAROUSEL.y + 92;
-  withScale(W / 2, cardY, 0.6 + 0.4 * pop, () => {
-    drawPill(W / 2, cardY, 440, 110, '#ffffff', { stroke: pet.color });
-    drawText(COPY.name(pet), W / 2, cardY - 16, { size: LANG === 'ja' && COPY.name(pet).length > 5 ? 40 : 50, weight: LANG === 'ko' ? '' : 700 });
-    drawText(COPY.subName(pet), W / 2, cardY + 30, { font: LANG === 'en' ? '"M PLUS Rounded 1c", sans-serif' : FONT_EN, size: 24, color: INK_SOFT, weight: 600 });
-  });
-  drawText(`${String(focus + 1).padStart(2, '0')} / ${CAST.length}`, W / 2 + 330, cardY - 36, { font: FONT_EN, size: 26, color: pet.color, weight: 700 });
-}
-
-// ---------- wipes ----------
-const WIPE_COLORS = ['#fbd3dc', '#cfe2f5', '#fbe9b4'];
-function drawWipe(t, mid) {
-  const start = mid - T.wipeHalf, end = mid + T.wipeHalf;
-  if (t < start || t > end) return;
-  const R = 1250;
-  WIPE_COLORS.forEach((color, i) => {
-    const delay = i * 60;
-    ctx.save();
-    ctx.fillStyle = color;
-    if (t < mid) {
-      const r = easeInCubic(progress(t, start + delay, mid)) * R;
-      ctx.beginPath(); ctx.arc(W / 2, H / 2, r, 0, Math.PI * 2); ctx.fill();
-    } else {
-      const hole = easeOutCubic(progress(t, mid + (2 - i) * 60, end)) * R;
-      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(W / 2, H / 2, hole, 0, Math.PI * 2, true); ctx.fill('evenodd');
+    const cell = seg.state === 'look' ? lookCell(t) : { row: ROWS[seg.state], column: columnAt(pet.holdsMs[seg.state], t - seg.start) };
+    if (t >= actor.from && t < actor.to) {
+      shadow(PERCH.x, PERCH.y, PERCH.scale);
+      drawCell(actor.id, cell.row, cell.column, PERCH.x, PERCH.y, PERCH.scale);
     }
+  }
+  for (const actor of DESK_ACTORS) puff(PERCH.x, PERCH.y, PERCH.scale, t, actor.from);
+}
+
+function drawDesk(t) {
+  deskBackground();
+  drawWindow(t);
+  if (t >= DESK_STATES[0].at - 250) drawDeskPets(t);
+  drawCursor(t);
+  const state = deskStateAt(t);
+  // captions stay left of the perched pet, which owns the top-right corner of the window
+  const room = PERCH.x - 190 - WIN.x;
+  caption(t, DESK_STATES[0].at - 300, LOOK.at - 150, COPY.states, { x: WIN.x, y: 300, align: 'left', size: 58, maxWidth: room });
+  caption(t, LOOK.at + 150, DESK.end - 150, COPY.look, { x: WIN.x, y: 300, align: 'left', size: 58, maxWidth: room });
+  if (state) {
+    const dots = DESK_STATES.map(s => s.state);
+    dots.forEach((s, i) => {
+      const active = s === state.state;
+      ctx.save(); ctx.globalAlpha = active ? 1 : 0.35; ctx.fillStyle = active ? STATE_COLORS[s] : '#cdbbb0';
+      roundRect(WIN.x + i * 38, 362, active ? 30 : 14, 12, 6); ctx.fill(); ctx.restore();
+    });
+  }
+}
+
+// ---------- scene 4: a real run across the screen (21000 - 29200) ----------
+const RUN = { start: 20800, end: 29200, groundY: 820, scale: 2 };
+const RUNNERS = [
+  { id: 'usagi', dir: 1, start: 21400, offset: 0 },
+  { id: 'chiikawa', dir: 1, start: 21400, offset: 430 },
+  { id: 'hachiware', dir: 1, start: 21400, offset: 820 },
+  { id: 'kurimanju', dir: -1, start: 25300, offset: 0 },
+  { id: 'siren', dir: -1, start: 25300, offset: 470 },
+];
+const RUN_SPEED = 0.72;     // px per ms at 2x
+function runnerX(r, t) {
+  const travel = (t - r.start) * RUN_SPEED;
+  return r.dir > 0 ? Math.round(-220 - r.offset + travel) : Math.round(W + 220 + r.offset - travel);
+}
+function drawRun(t) {
+  plainBackground();
+  // a long soft floor line gives the run a ground to cross
+  ctx.save(); ctx.strokeStyle = '#efe2d8'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(140, RUN.groundY + 28); ctx.lineTo(W - 140, RUN.groundY + 28); ctx.stroke(); ctx.restore();
+  caption(t, RUN.start + 400, RUN.end - 250, COPY.run, { y: 250, size: 66 });
+  for (const r of RUNNERS) {
+    if (t < r.start) continue;
+    const x = runnerX(r, t);
+    if (x < -260 || x > W + 260) continue;
+    const pet = CAST[r.id];
+    const state = r.dir > 0 ? 'running-right' : 'running-left';
+    drawDust(r, t);
+    shadow(x, RUN.groundY, RUN.scale);
+    drawCell(r.id, ROWS[state], columnAt(pet.holdsMs[state], t - r.start), x, RUN.groundY, RUN.scale);
+  }
+}
+// dust puffs are derived from the runner's own past positions; nothing is stored
+function drawDust(r, t) {
+  for (let spawn = r.start + 90; spawn < t; spawn += 150) {
+    const age = t - spawn;
+    if (age > 560) continue;
+    const k = age / 560;
+    const x = runnerX(r, spawn) - r.dir * (88 + k * 40);
+    ctx.save(); ctx.globalAlpha = (1 - k) * 0.6; ctx.fillStyle = '#efe0d4';
+    ctx.beginPath(); ctx.arc(x, RUN.groundY - 6 - k * 26, 9 + k * 20, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+}
+
+// ---------- scene 5: meet the friends, three at a time (29000 - 37000) ----------
+const MEET = { start: 29000, end: 37000, y: 760, scale: 2 };
+const MEET_GROUPS = [
+  { at: 29300, ids: ['chiikawa', 'hachiware', 'usagi'] },
+  { at: 31200, ids: ['momonga', 'shisa', 'rakko'] },
+  { at: 33100, ids: ['kurimanju', 'siren', 'furuhonya'] },
+  { at: 35000, ids: ['anoko', 'dekatsuyo'] },
+];
+function drawMeet(t) {
+  plainBackground();
+  caption(t, MEET.start + 200, MEET.end - 150, COPY.meet, { y: 170, size: 56 });
+  MEET_GROUPS.forEach((group, gi) => {
+    const out = gi + 1 < MEET_GROUPS.length ? MEET_GROUPS[gi + 1].at : MEET.end + 100;
+    if (t < group.at - 10 || t > out) return;
+    const spacing = 540;
+    group.ids.forEach((id, i) => {
+      const x = Math.round(W / 2 + (i - (group.ids.length - 1) / 2) * spacing);
+      const enter = progress(t, group.at + i * 90, group.at + i * 90 + 420);
+      const leave = progress(t, out - 320, out - 20);
+      const alpha = easeOutCubic(enter) * (1 - easeInCubic(leave));
+      if (alpha <= 0) return;
+      const y = MEET.y + Math.round((1 - easeOutCubic(enter)) * 30 - easeInCubic(leave) * 20);
+      const pet = CAST[id];
+      ctx.save(); ctx.globalAlpha = alpha;
+      shadow(x, y, MEET.scale, alpha);
+      drawCell(id, ROWS.waving, columnAt(pet.holdsMs.waving, t - group.at), x, y, MEET.scale);
+      text(COPY.name(pet), x, y + 70, { size: LANG === 'ja' && COPY.name(pet).length > 5 ? 38 : 46, weight: LANG === 'ko' ? '' : 700 });
+      text(COPY.sub(pet), x, y + 116, { size: 24, color: INK_SOFT, font: LANG === 'en' ? FONT_JA : FONT_EN, weight: 600 });
+      ctx.restore();
+    });
+  });
+}
+
+// ---------- scene 6: everyone in one airy row (36800 - 43000) ----------
+const FINALE = { start: 36800, end: DURATION_MS, y: 830, scale: 1 };
+const FINALE_ORDER = ['siren', 'momonga', 'kurimanju', 'usagi', 'chiikawa', 'hachiware', 'shisa', 'rakko', 'furuhonya', 'anoko', 'dekatsuyo'];
+const FINALE_TRACKS = {};
+function buildFinale() {
+  FINALE_ORDER.forEach((id, i) => {
+    const appear = FINALE.start + 300 + i * 70;
+    FINALE_TRACKS[id] = { appear, track: buildTrack(CAST[id], [
+      { t: appear, state: 'idle', mode: 'restart' },
+      { t: FINALE.start + 1900 + i * 70, state: 'jumping', mode: 'cycle' },
+      { t: FINALE.start + 1901 + i * 70, state: 'idle', mode: 'cycle' },
+    ]) };
+  });
+}
+function drawFinale(t) {
+  plainBackground();
+  title(t, FINALE.start + 200, DURATION_MS - 150, 330, 118);
+  text(COPY.outro, W / 2, 428, { size: 40, color: INK_SOFT, alpha: presence(t, FINALE.start + 700, DURATION_MS - 150, 450) });
+  const urlAlpha = presence(t, FINALE.start + 1100, DURATION_MS - 150, 450);
+  withScale(W / 2, 520, easeOutBack(progress(t, FINALE.start + 1100, FINALE.start + 1600)), () => {
+    pill(W / 2, 520, 720, 66, INK, { alpha: urlAlpha });
+    text('github.com/heelee912/chiikawa-dots-pets', W / 2, 522, { size: 29, color: CREAM, alpha: urlAlpha, font: FONT_EN, weight: 600 });
+  });
+  const spacing = 158;
+  FINALE_ORDER.forEach((id, i) => {
+    const { appear, track } = FINALE_TRACKS[id];
+    if (t < appear) return;
+    const seg = segmentAt(track, t);
+    const x = Math.round(W / 2 + (i - 5) * spacing);
+    const k = easeOutCubic(progress(t, appear, appear + 400));
+    const fade = 1 - easeInCubic(progress(t, DURATION_MS - 600, DURATION_MS - 80));
+    const y = FINALE.y + Math.round((1 - k) * 24);
+    ctx.save(); ctx.globalAlpha = k * fade;
+    shadow(x, FINALE.y, 1.3, k * fade);
+    drawCell(id, ROWS[seg.state], columnAt(CAST[id].holdsMs[seg.state], t - seg.start), x, y, FINALE.scale);
     ctx.restore();
   });
-}
-
-// ---------- outro ----------
-function drawOutro(t) {
-  drawTitle(t, T.outro + 100, DURATION_MS - 200, 96, 112);
-  drawText(COPY.outro, W / 2, 182, { size: 38, color: INK_SOFT, alpha: presence(t, T.outro + 500, DURATION_MS - 200, 400), weight: LANG === 'ko' ? '' : 700 });
-  const urlAlpha = presence(t, T.outro + 800, DURATION_MS - 200, 400);
-  const pop = easeOutBack(progress(t, T.outro + 800, T.outro + 1300));
-  withScale(W / 2, 252, pop, () => {
-    drawPill(W / 2, 252, 760, 70, INK, { alpha: urlAlpha });
-    drawText('github.com/heelee912/chiikawa-dots-pets', W / 2, 254, { font: FONT_EN, size: 31, color: '#fff6ea', alpha: urlAlpha, weight: 600 });
-  });
-}
-
-function drawFooter(t) {
-  const alpha = 0.85 * presence(t, 0, DURATION_MS - 80, 400);
-  drawText(COPY.footer, W / 2, H - 34, { font: `${FONT_EN.split(',')[0]}, ${COPY.font}`, size: 22, color: '#b8a59a', alpha, weight: 600 });
 }
 
 // ---------- composition ----------
+const SCENES = [
+  { start: 0, end: OPEN.end, draw: drawOpening },
+  { start: DESK.start, end: DESK.end, draw: drawDesk },
+  { start: RUN.start, end: RUN.end, draw: drawRun },
+  { start: MEET.start, end: MEET.end, draw: drawMeet },
+  { start: FINALE.start, end: FINALE.end, draw: drawFinale },
+];
 function renderAt(t) {
   t = ((t % DURATION_MS) + DURATION_MS) % DURATION_MS;
-  drawBackground(t);
-
-  // intro
-  drawTitle(t, 150, 5000, 128, 132);
-  drawText(COPY.subtitle, W / 2, 238, { size: 46, color: INK_SOFT, alpha: presence(t, 700, 5000, 420), weight: LANG === 'ko' ? '' : 700 });
-
-  drawCaption(t, T.runStart - 100, T.wipe1 - 200, COPY.run);
-  drawCaption(t, T.wipe1 + 200, T.wipe2 - 200, COPY.meet);
-  drawCaption(t, T.statesIdle + 250, T.statesEnd + 350, COPY.states);
-  drawCaption(t, T.look + 50, T.lookEnd + 50, COPY.look);
-  drawStatusPill(t);
-
-  if (formationVisible(t)) {
-    for (const pet of CAST) drawDust(pet, t);
-    for (const pet of CAST) drawRevealBurst(pet, t);
-  }
-  drawFormation(t);
-  drawCarousel(t);
-  drawStar(t);
-  const jumpStart = T.states[4][1];
-  if (t >= jumpStart && t < jumpStart + 1800) drawConfetti(t - jumpStart - 200, 560);
-  if (t >= T.outroJump) drawConfetti(t - T.outroJump - 300, 600);
-  if (t >= T.outro) drawOutro(t);
-
-  drawWipe(t, T.wipe1);
-  drawWipe(t, T.wipe2);
-  drawFooter(t);
+  // scenes overlap briefly; the later one fades in over the earlier one
+  const active = SCENES.filter(s => t >= s.start && t < s.end);
+  active.forEach((scene, i) => {
+    ctx.save();
+    if (i > 0) ctx.globalAlpha = easeInOutSine(progress(t, scene.start, active[i - 1].end));
+    scene.draw(t);
+    ctx.restore();
+  });
+  const fade = presence(t, 0, DURATION_MS - 60, 400);
+  text(COPY.footer, W / 2, H - 22, { size: 18, color: '#c2b1a6', alpha: 0.9 * fade, font: `${FONT_EN.split(',')[0]}, ${COPY.font}`, weight: 600 });
 }
 
 // render.py uses this to land GIF frames exactly on sprite changes.
 function spriteSignatureAt(t) {
-  if (!formationVisible(t)) {
-    const travel = carouselTravel(t);
-    return 'c' + CAST.map(p => columnAt(p.holdsMs.waving, t - CAROUSEL.start)).join('') + ':' + Math.round(travel * 100);
+  const parts = [];
+  for (const a of DESK_ACTORS) {
+    const seg = segmentAt(a.track, t);
+    if (seg && t >= a.from && t < a.to) parts.push(a.id + (seg.state === 'look' ? JSON.stringify(lookCell(t)) : columnAt(CAST[a.id].holdsMs[seg.state], t - seg.start)));
   }
-  return CAST.map(pet => {
-    const seg = segmentAt(TRACKS[pet.id], t);
-    if (!seg || t < revealTime(pet.id) - 100) return '-';
-    if (seg.state === 'look') { const c = lookCell(pet, t); return `${c.row}${c.column}`; }
-    return `${STATE_ROWS[seg.state]}${columnAt(pet.holdsMs[seg.state], t - seg.start)}`;
-  }).join('|');
+  for (const r of RUNNERS) if (t >= r.start) parts.push(r.id + columnAt(CAST[r.id].holdsMs[r.dir > 0 ? 'running-right' : 'running-left'], t - r.start));
+  if (t >= MEET.start && t < MEET.end) for (const g of MEET_GROUPS) for (const id of g.ids) parts.push(id + columnAt(CAST[id].holdsMs.waving, t - g.at));
+  if (t >= FINALE.start) for (const id of FINALE_ORDER) { const s = segmentAt(FINALE_TRACKS[id].track, t); if (s) parts.push(id + s.state + columnAt(CAST[id].holdsMs[s.state], t - s.start)); }
+  parts.push('o' + columnAt(CAST.chiikawa.holdsMs.idle, t - OPEN.petIn));
+  return parts.join('|');
 }
 
 async function load() {
   const data = await (await fetch('cast.json')).json();
-  CAST = data.cast.map(p => ({ ...p, nameJa: JA_NAMES[p.id] }));
-  await Promise.all(CAST.map(p => new Promise((resolve, reject) => {
+  for (const p of data.cast) CAST[p.id] = { ...p, nameJa: JA_NAMES[p.id] };
+  await Promise.all(Object.keys(CAST).map(id => new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => { sheets[p.id] = img; resolve(); };
-    img.onerror = () => reject(new Error(`missing spritesheet for ${p.id}`));
-    img.src = `../pets/${p.id}/spritesheet.png`;
+    img.onload = () => { sheets[id] = img; resolve(); };
+    img.onerror = () => reject(new Error(`missing spritesheet for ${id}`));
+    img.src = `../pets/${id}/spritesheet.png`;
   })));
-  buildTracks();
-  const allText = Object.values(COPY).filter(v => typeof v === 'string').join('') + Object.values(COPY.stateLabels).join('') +
-    CAST.map(p => COPY.name(p) + COPY.subName(p)).join('');
+  buildDeskActors();
+  buildFinale();
+  const strings = [COPY.subtitle, COPY.states, COPY.look, COPY.run, COPY.meet, COPY.outro, COPY.footer, COPY.ask, COPY.yes, COPY.no,
+    COPY.failedLine, COPY.doneLine, ...Object.values(COPY.chip), ...Object.values(CAST).map(p => COPY.name(p) + COPY.sub(p))].join('');
   await Promise.all([
-    document.fonts.load(`74px ${COPY.font}`, allText),
-    document.fonts.load(`700 74px ${COPY.font}`, allText),
-    document.fonts.load(`700 80px ${FONT_EN}`, 'Chiikawa Dots Pets 0123456789/ github.com'),
-    document.fonts.load(`600 40px ${FONT_EN}`, allText),
-    document.fonts.load(`600 24px "M PLUS Rounded 1c"`, Object.values(JA_NAMES).join('')),
+    document.fonts.load(`62px ${COPY.font}`, strings),
+    document.fonts.load(`700 62px ${COPY.font}`, strings),
+    document.fonts.load(`600 40px ${FONT_EN}`, strings + 'Chiikawa Dots Pets my-project github.com ✓×'),
+    document.fonts.load(`700 80px ${FONT_EN}`, 'Chiikawa Dots Pets ✓×'),
+    document.fonts.load(`600 24px ${FONT_JA}`, Object.values(JA_NAMES).join('')),
   ]);
   await document.fonts.ready;
   return true;
