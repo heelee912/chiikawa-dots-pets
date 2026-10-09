@@ -35,7 +35,7 @@ const LANG = ['ko', 'en', 'ja'].includes(params.get('lang')) ? params.get('lang'
 
 const W = 1920, H = 1080;
 const CELL_W = 192, CELL_H = 208, FEET_IN_CELL = 198;
-const DURATION_MS = 43000;
+const DURATION_MS = 54200;
 const ROWS = { idle: 0, 'running-right': 1, 'running-left': 2, waving: 3, jumping: 4, failed: 5, waiting: 6, running: 7, review: 8 };
 
 // ---------- copy ----------
@@ -47,6 +47,7 @@ const COPY = {
     look: '커서를 따라 두리번두리번',
     run: '화면 위를 뛰어다녀요',
     meet: '함께하는 친구들',
+    motions: { idle: '쉬기', waving: '인사', jumping: '점프', failed: '실패', waiting: '기다림', running: '작업', review: '검토', look: '두리번' },
     outro: '데스크톱에 데려가 보세요',
     footer: '비공식 팬 제작물 · Chiikawa © Nagano',
     project: 'my-project',
@@ -62,6 +63,7 @@ const COPY = {
     look: 'They follow your cursor',
     run: 'They run across your screen',
     meet: 'Meet the friends',
+    motions: { idle: 'Idle', waving: 'Wave', jumping: 'Jump', failed: 'Failed', waiting: 'Waiting', running: 'Working', review: 'Review', look: 'Look around' },
     outro: 'Bring them to your desktop',
     footer: 'Unofficial fan work · Chiikawa © Nagano',
     project: 'my-project',
@@ -77,6 +79,7 @@ const COPY = {
     look: 'カーソルを追いかけてきょろきょろ',
     run: '画面の上を走りまわる',
     meet: 'なかまたち',
+    motions: { idle: '待機', waving: 'あいさつ', jumping: 'ジャンプ', failed: '失敗', waiting: '待つ', running: '作業中', review: 'レビュー', look: 'きょろきょろ' },
     outro: 'デスクトップにお迎えしよう',
     footer: '非公式ファンメイド · Chiikawa © Nagano',
     project: 'my-project',
@@ -424,35 +427,32 @@ function drawDesk(t) {
   }
 }
 
-// ---------- scene 4: a real run across the screen (21000 - 29200) ----------
-const RUN = { start: 20800, end: 29200, groundY: 820, scale: 2 };
-const RUNNERS = [
-  { id: 'usagi', dir: 1, start: 21400, offset: 0 },
-  { id: 'chiikawa', dir: 1, start: 21400, offset: 430 },
-  { id: 'hachiware', dir: 1, start: 21400, offset: 820 },
-  { id: 'kurimanju', dir: -1, start: 25300, offset: 0 },
-  { id: 'siren', dir: -1, start: 25300, offset: 470 },
-];
+// ---------- scene 4: everyone runs across the screen, two lanes (20800 - 27000) ----------
+const RUN = { start: 20800, end: 27000, scale: 2 };
 const RUN_SPEED = 0.72;     // px per ms at 2x
+const LANES = [
+  { y: 560, dir: 1, gap: 310, ids: ['chiikawa', 'hachiware', 'usagi', 'momonga', 'shisa', 'rakko'] },
+  { y: 940, dir: -1, gap: 330, ids: ['kurimanju', 'siren', 'furuhonya', 'anoko', 'dekatsuyo'] },
+];
+const RUNNERS = LANES.flatMap(lane => lane.ids.map((id, i) => ({ id, dir: lane.dir, y: lane.y, start: 21300, offset: i * lane.gap })));
 function runnerX(r, t) {
   const travel = (t - r.start) * RUN_SPEED;
   return r.dir > 0 ? Math.round(-220 - r.offset + travel) : Math.round(W + 220 + r.offset - travel);
 }
 function drawRun(t) {
   plainBackground();
-  // a long soft floor line gives the run a ground to cross
   ctx.save(); ctx.strokeStyle = '#efe2d8'; ctx.lineWidth = 6; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(140, RUN.groundY + 28); ctx.lineTo(W - 140, RUN.groundY + 28); ctx.stroke(); ctx.restore();
-  caption(t, RUN.start + 400, RUN.end - 250, COPY.run, { y: 250, size: 66 });
+  for (const lane of LANES) { ctx.beginPath(); ctx.moveTo(120, lane.y + 28); ctx.lineTo(W - 120, lane.y + 28); ctx.stroke(); }
+  ctx.restore();
+  caption(t, RUN.start + 400, RUN.end - 250, COPY.run, { y: 140, size: 64 });
   for (const r of RUNNERS) {
     if (t < r.start) continue;
     const x = runnerX(r, t);
     if (x < -260 || x > W + 260) continue;
-    const pet = CAST[r.id];
     const state = r.dir > 0 ? 'running-right' : 'running-left';
     drawDust(r, t);
-    shadow(x, RUN.groundY, RUN.scale);
-    drawCell(r.id, ROWS[state], columnAt(pet.holdsMs[state], t - r.start), x, RUN.groundY, RUN.scale);
+    shadow(x, r.y, RUN.scale);
+    drawCell(r.id, ROWS[state], columnAt(CAST[r.id].holdsMs[state], t - r.start), x, r.y, RUN.scale);
   }
 }
 // dust puffs are derived from the runner's own past positions; nothing is stored
@@ -463,45 +463,79 @@ function drawDust(r, t) {
     const k = age / 560;
     const x = runnerX(r, spawn) - r.dir * (88 + k * 40);
     ctx.save(); ctx.globalAlpha = (1 - k) * 0.6; ctx.fillStyle = '#efe0d4';
-    ctx.beginPath(); ctx.arc(x, RUN.groundY - 6 - k * 26, 9 + k * 20, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    ctx.beginPath(); ctx.arc(x, r.y - 6 - k * 26, 9 + k * 20, 0, Math.PI * 2); ctx.fill(); ctx.restore();
   }
 }
 
-// ---------- scene 5: meet the friends, three at a time (29000 - 37000) ----------
-const MEET = { start: 29000, end: 37000, y: 760, scale: 2 };
-const MEET_GROUPS = [
-  { at: 29300, ids: ['chiikawa', 'hachiware', 'usagi'] },
-  { at: 31200, ids: ['momonga', 'shisa', 'rakko'] },
-  { at: 33100, ids: ['kurimanju', 'siren', 'furuhonya'] },
-  { at: 35000, ids: ['anoko', 'dekatsuyo'] },
+// ---------- scene 5: every motion, performed by all eleven (26800 - 48000) ----------
+// Two rows that never overlap: six on top, five below, all at 2x.
+const PARADE = { start: 26800, end: 48000, first: 27200, rowMs: 2600 };
+const PARADE_MOTIONS = ['idle', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review', 'look'];
+const PARADE_SLOTS = [
+  ...['chiikawa', 'hachiware', 'usagi', 'momonga', 'shisa', 'rakko'].map((id, i) => ({ id, x: 210 + i * 300, y: 600 })),
+  ...['kurimanju', 'siren', 'furuhonya', 'anoko', 'dekatsuyo'].map((id, i) => ({ id, x: 360 + i * 300, y: 970 })),
 ];
-function drawMeet(t) {
+const LOOK_STEP_MS = 150;   // one direction per step, clockwise from straight up
+function paradeRow(t) {
+  const k = Math.floor((t - PARADE.first) / PARADE.rowMs);
+  return k >= 0 && k < PARADE_MOTIONS.length ? k : -1;
+}
+// Each pet leaves at the end of its last full cycle that fits the row, so no motion is cut.
+function paradeTiming(slotIndex, row) {
+  const motion = PARADE_MOTIONS[row];
+  const rowStart = PARADE.first + row * PARADE.rowMs;
+  const start = rowStart + slotIndex * 40;
+  const limit = rowStart + PARADE.rowMs - 230;
+  if (motion === 'look') return { motion, start, leave: limit };
+  const length = cycleMs(CAST[PARADE_SLOTS[slotIndex].id], motion);
+  return { motion, start, leave: start + Math.max(1, Math.floor((limit - start) / length)) * length };
+}
+function paradeCell(slotIndex, row, t) {
+  const { motion, start } = paradeTiming(slotIndex, row);
+  const pet = CAST[PARADE_SLOTS[slotIndex].id];
+  if (motion === 'look') { const index = Math.floor((t - start) / LOOK_STEP_MS) % 16; return { row: 9 + Math.floor(index / 8), column: index % 8 }; }
+  return { row: ROWS[motion], column: columnAt(pet.holdsMs[motion], t - start) };
+}
+function fitWidth(str, size) {
+  ctx.save(); ctx.font = `${COPY.weight} ${size}px ${COPY.font}`; const w = ctx.measureText(str).width; ctx.restore(); return w;
+}
+function drawParade(t) {
   plainBackground();
-  caption(t, MEET.start + 200, MEET.end - 150, COPY.meet, { y: 170, size: 56 });
-  MEET_GROUPS.forEach((group, gi) => {
-    const out = gi + 1 < MEET_GROUPS.length ? MEET_GROUPS[gi + 1].at : MEET.end + 100;
-    if (t < group.at - 10 || t > out) return;
-    const spacing = 540;
-    group.ids.forEach((id, i) => {
-      const x = Math.round(W / 2 + (i - (group.ids.length - 1) / 2) * spacing);
-      const enter = progress(t, group.at + i * 90, group.at + i * 90 + 420);
-      const leave = progress(t, out - 320, out - 20);
-      const alpha = easeOutCubic(enter) * (1 - easeInCubic(leave));
-      if (alpha <= 0) return;
-      const y = MEET.y + Math.round((1 - easeOutCubic(enter)) * 30 - easeInCubic(leave) * 20);
-      const pet = CAST[id];
-      ctx.save(); ctx.globalAlpha = alpha;
-      shadow(x, y, MEET.scale, alpha);
-      drawCell(id, ROWS.waving, columnAt(pet.holdsMs.waving, t - group.at), x, y, MEET.scale);
-      text(COPY.name(pet), x, y + 70, { size: LANG === 'ja' && COPY.name(pet).length > 5 ? 38 : 46, weight: LANG === 'ko' ? '' : 700 });
-      text(COPY.sub(pet), x, y + 116, { size: 24, color: INK_SOFT, font: LANG === 'en' ? FONT_JA : FONT_EN, weight: 600 });
-      ctx.restore();
-    });
+  const row = paradeRow(t);
+  if (row < 0) return;
+  const motion = PARADE_MOTIONS[row];
+  const rowStart = PARADE.first + row * PARADE.rowMs;
+  const labelIn = easeOutBack(progress(t, rowStart, rowStart + 420));
+  const labelOut = 1 - easeInCubic(progress(t, rowStart + PARADE.rowMs - 240, rowStart + PARADE.rowMs));
+  const color = STATE_COLORS[motion] || ({ idle: '#c9b8ad', waving: '#f2a3b3', look: '#ffc65c' })[motion];
+  withScale(W / 2, 128, 0.7 + 0.3 * labelIn, () => {
+    ctx.save(); ctx.globalAlpha = labelOut; ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(W / 2 - fitWidth(COPY.motions[motion], 70) / 2 - 34, 128, 13, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    text(COPY.motions[motion], W / 2 + 10, 128, { size: 70, alpha: labelOut });
+  });
+  PARADE_MOTIONS.forEach((m, i) => {
+    const active = i === row;
+    ctx.save(); ctx.globalAlpha = active ? 1 : 0.35; ctx.fillStyle = active ? color : '#d8c8bd';
+    roundRect(W / 2 + (i - 3.5) * 34 - (active ? 13 : 5), 196, active ? 26 : 10, 10, 5); ctx.fill(); ctx.restore();
+  });
+  PARADE_SLOTS.forEach((slot, i) => {
+    const { start, leave } = paradeTiming(i, row);
+    if (t < start) return;
+    const enter = easeOutCubic(progress(t, start, start + 260));
+    const exit = easeInCubic(progress(t, leave, leave + 200));
+    const alpha = enter * (1 - exit);
+    if (alpha <= 0) return;
+    const cell = paradeCell(i, row, Math.min(t, leave - 1));
+    const y = slot.y + Math.round((1 - enter) * 22);
+    ctx.save(); ctx.globalAlpha = alpha;
+    shadow(slot.x, slot.y, 2, alpha);
+    drawCell(slot.id, cell.row, cell.column, slot.x, y, 2);
+    ctx.restore();
   });
 }
 
 // ---------- scene 6: everyone in one airy row (36800 - 43000) ----------
-const FINALE = { start: 36800, end: DURATION_MS, y: 830, scale: 1 };
+const FINALE = { start: 47800, end: DURATION_MS, y: 830, scale: 1 };
 const FINALE_ORDER = ['siren', 'momonga', 'kurimanju', 'usagi', 'chiikawa', 'hachiware', 'shisa', 'rakko', 'furuhonya', 'anoko', 'dekatsuyo'];
 const FINALE_TRACKS = {};
 function buildFinale() {
@@ -544,7 +578,7 @@ const SCENES = [
   { start: 0, end: OPEN.end, draw: drawOpening },
   { start: DESK.start, end: DESK.end, draw: drawDesk },
   { start: RUN.start, end: RUN.end, draw: drawRun },
-  { start: MEET.start, end: MEET.end, draw: drawMeet },
+  { start: PARADE.start, end: PARADE.end, draw: drawParade },
   { start: FINALE.start, end: FINALE.end, draw: drawFinale },
 ];
 function renderAt(t) {
@@ -569,7 +603,8 @@ function spriteSignatureAt(t) {
     if (seg && t >= a.from && t < a.to) parts.push(a.id + (seg.state === 'look' ? JSON.stringify(lookCell(t)) : columnAt(CAST[a.id].holdsMs[seg.state], t - seg.start)));
   }
   for (const r of RUNNERS) if (t >= r.start) parts.push(r.id + columnAt(CAST[r.id].holdsMs[r.dir > 0 ? 'running-right' : 'running-left'], t - r.start));
-  if (t >= MEET.start && t < MEET.end) for (const g of MEET_GROUPS) for (const id of g.ids) parts.push(id + columnAt(CAST[id].holdsMs.waving, t - g.at));
+  const row = paradeRow(t);
+  if (row >= 0) PARADE_SLOTS.forEach((slot, i) => { const c = paradeCell(i, row, Math.min(t, paradeTiming(i, row).leave - 1)); parts.push(slot.id + c.row + '.' + c.column); });
   if (t >= FINALE.start) for (const id of FINALE_ORDER) { const s = segmentAt(FINALE_TRACKS[id].track, t); if (s) parts.push(id + s.state + columnAt(CAST[id].holdsMs[s.state], t - s.start)); }
   parts.push('o' + columnAt(CAST.chiikawa.holdsMs.idle, t - OPEN.petIn));
   return parts.join('|');
@@ -586,7 +621,7 @@ async function load() {
   })));
   buildDeskActors();
   buildFinale();
-  const strings = [COPY.subtitle, COPY.states, COPY.look, COPY.run, COPY.meet, COPY.outro, COPY.footer, COPY.ask, COPY.yes, COPY.no,
+  const strings = [...Object.values(COPY.motions), COPY.subtitle, COPY.states, COPY.look, COPY.run, COPY.meet, COPY.outro, COPY.footer, COPY.ask, COPY.yes, COPY.no,
     COPY.failedLine, COPY.doneLine, ...Object.values(COPY.chip), ...Object.values(CAST).map(p => COPY.name(p) + COPY.sub(p))].join('');
   await Promise.all([
     document.fonts.load(`62px ${COPY.font}`, strings),

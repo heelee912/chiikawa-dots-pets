@@ -34,7 +34,7 @@ POSTER_TIME_MS = 4600
 
 # The README GIF carries the whole movie at a smaller size; the MP4 linked under it
 # is the full-resolution 100 fps master.
-GIF_RANGES_MS = [(0, 43000)]
+GIF_RANGES_MS = [(0, 54200)]
 GIF_WIDTH_PX = 640
 GIF_HEIGHT_PX = GIF_WIDTH_PX * 9 // 16
 GIF_MIN_DELAY_MS = 20       # browsers treat GIF delays under 20 ms as 100 ms
