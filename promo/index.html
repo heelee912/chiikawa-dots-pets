@@ -23,8 +23,10 @@
 // URL parameters: ?lang=ko|en|ja picks the caption language, ?export stops live playback.
 //
 // Story: a window opens and Chiikawa pops onto it -> the friends are introduced one by
-// one -> pets react to the work in the window, swapping with a puff -> everyone pops
-// onto the desk and follows the cursor -> they run off screen -> they pop back for the end.
+// one -> all eleven stand beside the window and react to its work together, changing
+// under one shared puff -> the cursor minimizes the window and everyone runs to the middle
+// -> they follow the cursor around -> it reopens the window as the title card and
+// everyone jumps on the same beat.
 //
 // Sprite rules (the pets are owner-approved and must not change):
 // - cells come straight from pets/<id>/spritesheet.png at integer scales (1x, 2x)
@@ -50,7 +52,6 @@ const COPY = {
     meet: '친구들을 소개할게요',
     states: '작업 상태에 맞춰 반응하고',
     look: '커서를 따라 다 같이 두리번',
-    run: '화면 위를 뛰어다녀요',
     outro: '데스크톱에 데려가 보세요',
     footer: '비공식 팬 제작물 · Chiikawa © Nagano',
     chip: { running: '작업 중', waiting: '확인이 필요해요', review: '검토 중', failed: '앗, 실패', jumping: '완료!' },
@@ -64,7 +65,6 @@ const COPY = {
     meet: 'Meet the friends',
     states: 'They react to what Codex is doing',
     look: 'Everyone follows your cursor',
-    run: 'They run across your screen',
     outro: 'Bring them to your desktop',
     footer: 'Unofficial fan work · Chiikawa © Nagano',
     chip: { running: 'Working', waiting: 'Needs your OK', review: 'Reviewing', failed: 'Oops, failed', jumping: 'Done!' },
@@ -78,7 +78,6 @@ const COPY = {
     meet: 'なかまたちをご紹介',
     states: 'Codexの作業にあわせて反応',
     look: 'みんなでカーソルをきょろきょろ',
-    run: '画面の上を走りまわる',
     outro: 'デスクトップにお迎えしよう',
     footer: '非公式ファンメイド · Chiikawa © Nagano',
     chip: { running: '作業中', waiting: '確認してね', review: 'レビュー中', failed: 'あっ、失敗', jumping: 'できた！' },
@@ -220,31 +219,46 @@ function desktop() {
 const T = {
   windowIn: 250, chiikawaPop: 1300, titleIn: 600,
   carouselOut: 4300, carousel: 4800, carouselEnd: 14800,
-  windowBack: 14700, states: [5], deskFirst: 15500, stateMs: 2050,
-  allPop: 25800, cursorIn: 26400, lookEnd: 32300,
-  runStart: 32300, finalePop: 37000, jump: 38000,
+  windowBack: 14700, castPop: 15500, stateMs: 2100,
+  cursorIn: 25200, minimize: 26300, runCue: 26350,
+  finale: 36000,
 };
-const DESK_STATES = [
-  { state: 'running', pet: 'hachiware' },
-  { state: 'waiting', pet: 'usagi' },
-  { state: 'review', pet: 'chiikawa' },
-  { state: 'failed', pet: 'momonga' },
-  { state: 'jumping', pet: 'shisa' },
-].map((s, i) => ({ ...s, at: T.deskFirst + i * T.stateMs }));
+// The whole cast switches together under one shared puff, in step with the window.
+const DESK_STATES = ['running', 'waiting', 'review', 'failed', 'jumping'].map((state, i) => ({ state, at: T.castPop + i * T.stateMs }));
 
 // ---------- the window ----------
-const WIN = { x: 410, w: 1100, h: 520, deskY: 470, lookY: 250 };
+const WIN = { x: 410, w: 1100, h: 520, deskY: 470, stageY: 315, titleY: 40, titleH: 380 };
 const PERCH_X = 1390;
-function windowY(t) {
+const MINIMIZE_MS = 560;
+const CHIIKAWA_RIDE_PX = 460;   // far enough below the screen that Chiikawa rides the window out of view
+const DOCK_Y = H + 40;    // the minimized window drops toward the bottom edge
+const MINIMIZE_BUTTON = { x: WIN.x + 60, y: WIN.stageY + 29 };
+
+function windowTop(t) {
   if (t < T.carouselOut) return WIN.deskY + Math.round((1 - easeOutCubic(progress(t, T.windowIn, T.windowIn + 650))) * 40);
-  if (t < T.windowBack) return Math.round(lerp(WIN.deskY, H + 80, easeInCubic(progress(t, T.carouselOut, T.carouselOut + 520))));
-  if (t < T.allPop) return Math.round(lerp(H + 80, WIN.deskY, easeOutCubic(progress(t, T.windowBack, T.windowBack + 650))));
-  return Math.round(lerp(WIN.deskY, WIN.lookY, easeInOutCubic(progress(t, T.allPop - 150, T.allPop + 450))));
+  if (t < T.windowBack) return Math.round(lerp(WIN.deskY, H + CHIIKAWA_RIDE_PX, easeInCubic(progress(t, T.carouselOut, T.carouselOut + 520))));
+  return Math.round(lerp(H + 80, WIN.stageY, easeOutCubic(progress(t, T.windowBack, T.windowBack + 650))));
 }
-function windowAlpha(t) { return easeOutCubic(progress(t, T.windowIn, T.windowIn + 600)) * (1 - easeInCubic(progress(t, DURATION_MS - 650, DURATION_MS - 80))); }
+// Position, size and transform of the window, or null while it is minimized.
+function windowFrame(t) {
+  if (t >= T.finale) {
+    const k = progress(t, T.finale, T.finale + 520);
+    if (k <= 0) return null;
+    const fadeOut = 1 - easeInCubic(progress(t, DURATION_MS - 650, DURATION_MS - 80));
+    return { y: WIN.titleY, h: WIN.titleH, scale: 0.4 + 0.6 * easeOutBack(k), dy: 0, alpha: clamp01(k * 3) * fadeOut };
+  }
+  if (t >= T.minimize + MINIMIZE_MS) return null;
+  const y = windowTop(t);
+  if (y > H) return null;
+  const k = progress(t, T.minimize, T.minimize + MINIMIZE_MS), e = easeInCubic(k);
+  return {
+    y, h: WIN.h, scale: 1 - 0.94 * e, dy: (DOCK_Y - (y + WIN.h / 2)) * e,
+    alpha: easeOutCubic(progress(t, T.windowIn, T.windowIn + 600)) * (1 - easeInCubic(progress(k, 0.55, 1))),
+  };
+}
 
 function deskStateAt(t) {
-  if (t < DESK_STATES[0].at || t >= T.allPop) return null;
+  if (t < DESK_STATES[0].at || t >= T.minimize) return null;
   let current = null;
   for (const s of DESK_STATES) if (t >= s.at) current = s;
   return current;
@@ -252,26 +266,27 @@ function deskStateAt(t) {
 
 const CODE_LINES = [[0, 360], [24, 280], [24, 420], [48, 220], [48, 330], [24, 260], [0, 180], [0, 300]];
 function drawWindow(t) {
-  const y = windowY(t);
-  if (y > H) return;
-  const alpha = windowAlpha(t);
-  const { x, w, h } = WIN;
-  ctx.save(); ctx.globalAlpha = alpha;
+  const frame = windowFrame(t);
+  if (!frame) return;
+  const { x, w } = WIN, { y, h } = frame;
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2 + frame.dy); ctx.scale(frame.scale, frame.scale); ctx.translate(-(x + w / 2), -(y + h / 2));
+  ctx.globalAlpha = frame.alpha;
+  ctx.save();
   ctx.shadowColor = 'rgba(90,70,60,0.16)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
   roundRect(x, y, w, h, 26); ctx.fillStyle = '#ffffff'; ctx.fill();
-  ctx.shadowColor = 'transparent';
+  ctx.restore();
   ctx.save(); roundRect(x, y, w, h, 26); ctx.clip(); ctx.fillStyle = '#f7f3ef'; ctx.fillRect(x, y, w, 58); ctx.restore();
   ['#f3a7a0', '#f2cd7c', '#9bd3a6'].forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x + 34 + i * 26, y + 29, 8, 0, Math.PI * 2); ctx.fill(); });
   text('my-project', x + 130, y + 30, { size: 22, color: INK_SOFT, align: 'left', font: FONT_EN, weight: 600 });
+  if (t >= T.finale) {
+    drawTitleCard(t, x, y);
+  } else {
+    ctx.fillStyle = '#faf7f4'; ctx.fillRect(x, y + 58, 190, h - 58 - 26);
+    for (let i = 0; i < 6; i++) { ctx.fillStyle = i === 1 ? '#eadfd7' : '#f0e8e2'; roundRect(x + 26, y + 96 + i * 46, 130 - (i % 3) * 22, 16, 8); ctx.fill(); }
+    drawWorkContent(t, x, y);
+  }
   ctx.restore();
-
-  const titleCard = easeOutCubic(progress(t, T.finalePop - 300, T.finalePop + 300));
-  ctx.save(); ctx.globalAlpha = alpha * (1 - titleCard);
-  ctx.fillStyle = '#faf7f4'; ctx.fillRect(x, y + 58, 190, h - 58 - 26);
-  for (let i = 0; i < 6; i++) { ctx.fillStyle = i === 1 ? '#eadfd7' : '#f0e8e2'; roundRect(x + 26, y + 96 + i * 46, 130 - (i % 3) * 22, 16, 8); ctx.fill(); }
-  drawWorkContent(t, x, y);
-  ctx.restore();
-  if (titleCard > 0) drawTitleCard(t, x, y, alpha * titleCard);
 }
 
 function drawWorkContent(t, x, y) {
@@ -325,30 +340,29 @@ function drawWorkContent(t, x, y) {
   ctx.restore();
 }
 
-// The window turns into the closing card: title, tagline, link and an install line.
-function drawTitleCard(t, x, y, alpha) {
-  const cx = x + WIN.w / 2;
-  ctx.save(); ctx.globalAlpha = alpha;
-  ctx.font = `700 92px ${FONT_EN}`;
-  const word = 'Chiikawa Dots Pets';
+// The reopened window is the closing card: title, tagline, link and an install line.
+function drawTitleCard(t, x, y) {
+  const cx = x + WIN.w / 2, start = T.finale + 150;
+  ctx.save(); ctx.font = `700 92px ${FONT_EN}`; ctx.fillStyle = INK; ctx.textBaseline = 'middle';
+  const base = ctx.globalAlpha, word = 'Chiikawa Dots Pets';
   const widths = [...word].map(ch => ctx.measureText(ch).width);
   let px = cx - widths.reduce((a, b) => a + b, 0) / 2;
   [...word].forEach((ch, i) => {
-    const k = easeOutBack(progress(t, T.finalePop + i * 28, T.finalePop + i * 28 + 520));
-    ctx.globalAlpha = alpha * clamp01(k * 1.5); ctx.fillStyle = INK; ctx.textBaseline = 'middle';
-    ctx.fillText(ch, px, y + 170 + (1 - k) * -36); px += widths[i];
+    const k = easeOutBack(progress(t, start + i * 28, start + i * 28 + 520));
+    ctx.globalAlpha = base * clamp01(k * 1.5);
+    ctx.fillText(ch, px, y + 128 + (1 - k) * -36); px += widths[i];
   });
   ctx.restore();
-  text(COPY.outro, cx, y + 262, { size: 38, color: INK_SOFT, alpha: alpha * presence(t, T.finalePop + 500, DURATION_MS, 400) });
-  const linkAlpha = alpha * presence(t, T.finalePop + 800, DURATION_MS, 400);
-  withScale(cx, y + 352, easeOutBack(progress(t, T.finalePop + 800, T.finalePop + 1300)), () => {
-    pill(cx, y + 352, 700, 64, INK, { alpha: linkAlpha, shadow: false });
-    text('github.com/heelee912/chiikawa-dots-pets', cx, y + 354, { size: 28, color: '#fff8ee', alpha: linkAlpha, font: FONT_EN, weight: 600 });
+  text(COPY.outro, cx, y + 204, { size: 38, color: INK_SOFT, alpha: presence(t, start + 450, DURATION_MS, 400) });
+  const linkAlpha = presence(t, start + 750, DURATION_MS, 400);
+  withScale(cx, y + 272, easeOutBack(progress(t, start + 750, start + 1250)), () => {
+    pill(cx, y + 272, 700, 60, INK, { alpha: linkAlpha, shadow: false });
+    text('github.com/heelee912/chiikawa-dots-pets', cx, y + 274, { size: 28, color: '#fff8ee', alpha: linkAlpha, font: FONT_EN, weight: 600 });
   });
   // an install line that types itself
   const cmd = 'irm …/chiikawa-dots-pets/main/install.ps1 | iex';
-  const shown = Math.floor(progress(t, T.finalePop + 1300, T.finalePop + 2800) * cmd.length);
-  text('> ' + cmd.slice(0, shown) + (Math.floor(t / 400) % 2 ? '▏' : ''), cx, y + 440, { size: 24, color: '#8b7a70', alpha: alpha * presence(t, T.finalePop + 1250, DURATION_MS, 300), font: '"Consolas", "Menlo", monospace', weight: '' });
+  const shown = Math.floor(progress(t, start + 1250, start + 2750) * cmd.length);
+  text('> ' + cmd.slice(0, shown) + (Math.floor(t / 400) % 2 ? '▏' : ''), cx, y + 334, { size: 24, color: '#8b7a70', alpha: presence(t, start + 1200, DURATION_MS, 300), font: '"Consolas", "Menlo", monospace', weight: '' });
 }
 
 // ---------- captions ----------
@@ -373,26 +387,25 @@ function introTitle(t) {
   ctx.restore();
   text(COPY.subtitle, WIN.x, 340, { size: 36, color: INK_SOFT, align: 'left', alpha: presence(t, T.titleIn + 700, T.carouselOut + 150, 450) });
 }
-
-// ---------- the perched pets on the window ----------
-const PERCH_ACTORS = [];
-function buildPerch() {
-  PERCH_ACTORS.push({ id: 'chiikawa', from: T.chiikawaPop, to: T.carouselOut, track: buildTrack('chiikawa', [{ t: T.chiikawaPop, state: 'idle', mode: 'now' }, { t: T.chiikawaPop + 1200, state: 'waving', mode: 'cycle' }, { t: T.chiikawaPop + 1201, state: 'idle', mode: 'cycle' }]) });
+function drawStateDots(t) {
+  const current = deskStateAt(t);
+  if (!current) return;
+  const alpha = presence(t, T.castPop - 300, T.minimize, 450);
+  const widths = DESK_STATES.map(s => s === current ? 30 : 14), gap = 12;
+  let x = W / 2 - (widths.reduce((a, b) => a + b, 0) + gap * (widths.length - 1)) / 2;
   DESK_STATES.forEach((s, i) => {
-    const to = i + 1 < DESK_STATES.length ? DESK_STATES[i + 1].at : T.allPop;
-    PERCH_ACTORS.push({ id: s.pet, from: s.at, to, track: buildTrack(s.pet, [{ t: s.at, state: s.state, mode: 'now' }]) });
+    const on = s === current;
+    ctx.save(); ctx.globalAlpha = alpha * (on ? 1 : 0.35); ctx.fillStyle = on ? STATE_COLORS[s.state] : '#cdbbb0';
+    roundRect(x, 242, widths[i], 12, 6); ctx.fill(); ctx.restore();
+    x += widths[i] + gap;
   });
 }
+
+// ---------- Chiikawa perched on the window at the start ----------
+let perchTrack = null;
 function perchActorsAt(t) {
-  const out = [];
-  for (const a of PERCH_ACTORS) {
-    if (t < a.from || t >= a.to) continue;
-    const seg = segmentAt(a.track, t);
-    const y = windowY(t);
-    if (y > H) continue;
-    out.push({ id: a.id, ...cellFor(a.id, seg, t), x: PERCH_X, y, scale: 2 });
-  }
-  return out;
+  if (t < T.chiikawaPop || t >= T.carouselOut + 520) return [];
+  return [{ id: 'chiikawa', ...cellFor('chiikawa', segmentAt(perchTrack, t), t), x: PERCH_X, y: windowTop(t), scale: 2 }];
 }
 
 // ---------- roll call carousel ----------
@@ -441,70 +454,104 @@ function drawCarousel(t) {
   text(`${String(focus + 1).padStart(2, '0')} / ${IDS.length}`, W / 2 + 330, cardY - 36, { size: 26, color: pet.color, alpha, font: FONT_EN, weight: 700 });
 }
 
-// ---------- everyone on the desk: look, run, and the final row (1x) ----------
-const FLOOR_Y = 950;
-const ROW_SPACING = 160;
-const rowX = i => Math.round(W / 2 + (i - (IDS.length - 1) / 2) * ROW_SPACING);
-const RUN_SPEED = 0.42;   // px per ms at 1x
-const runDelay = i => [0, 80, 30, 120, 60, 150, 20, 110, 50, 140, 90][i];
-const GROUP = {};
-function buildGroup() {
-  IDS.forEach((id, i) => {
-    const runAt = T.runStart + runDelay(i);
-    GROUP[id] = {
-      runAt,
-      track: buildTrack(id, [
-        { t: T.allPop, state: 'idle', mode: 'now' },
-        { t: T.cursorIn + 100, state: 'look', mode: 'cycle' },
-        { t: runAt, state: 'running-right', mode: 'now' },
-        { t: T.finalePop, state: 'idle', mode: 'now' },
-        { t: T.jump + i * 25, state: 'jumping', mode: 'cycle' },
-        { t: T.jump + i * 25 + 1, state: 'idle', mode: 'cycle' },
-      ]),
-    };
-  });
+// ---------- the whole cast at 1x: beside the window, then gathered in the middle ----------
+// Beside the window: six on the left and five on the right, each side a gently zigzagging column.
+const COLUMN_STEP_Y = 108;
+const HOME = {};
+['chiikawa', 'hachiware', 'usagi', 'momonga', 'shisa', 'rakko'].forEach((id, k) => { HOME[id] = { x: k % 2 ? 150 : 290, y: 335 + k * COLUMN_STEP_Y }; });
+['kurimanju', 'siren', 'furuhonya', 'anoko', 'dekatsuyo'].forEach((id, k) => { HOME[id] = { x: k % 2 ? 1770 : 1630, y: 389 + k * COLUMN_STEP_Y }; });
+// In the middle: three loose rows with a little irregular spacing, left pets on the left half.
+const SPOT = {
+  usagi: { x: 585, y: 605 }, hachiware: { x: 815, y: 617 }, kurimanju: { x: 1105, y: 607 }, siren: { x: 1340, y: 617 },
+  momonga: { x: 690, y: 757 }, chiikawa: { x: 960, y: 743 }, furuhonya: { x: 1232, y: 755 },
+  rakko: { x: 560, y: 893 }, shisa: { x: 842, y: 885 }, anoko: { x: 1080, y: 895 }, dekatsuyo: { x: 1362, y: 887 },
+};
+const RUN_SPEED = 0.46;   // px per ms at 1x
+const MOVES = {};
+function buildCast() {
+  for (const id of IDS) {
+    const home = HOME[id], spot = SPOT[id];
+    const runState = spot.x > home.x ? 'running-right' : 'running-left';
+    const events = [...DESK_STATES.map(s => ({ t: s.at, state: s.state, mode: 'now' })), { t: T.runCue, state: runState, mode: 'cycle' }];
+    const runStart = buildTrack(id, events).at(-1).start;
+    // the trip lasts whole run cycles, so the pet stops exactly at the end of a stride
+    const cycle = cycleMs(id, runState);
+    const arrive = runStart + Math.max(1, Math.round(Math.hypot(spot.x - home.x, spot.y - home.y) / RUN_SPEED / cycle)) * cycle;
+    const jumpEnd = T.finale + 2 * cycleMs(id, 'jumping');
+    events.push(
+      { t: arrive, state: 'look', mode: 'now' },
+      { t: T.finale, state: 'jumping', mode: 'now' },        // everyone jumps on the same beat, twice
+      { t: jumpEnd, state: 'waving', mode: 'cycle' },
+    );
+    MOVES[id] = { home, spot, runStart, arrive, track: buildTrack(id, events) };
+  }
 }
-function groupX(i, t) {
-  const g = GROUP[IDS[i]];
-  if (t >= g.runAt && t < T.finalePop) return Math.round(rowX(i) + (t - g.runAt) * RUN_SPEED);
-  return rowX(i);
+function castPosition(move, t) {
+  const k = progress(t, move.runStart, move.arrive);
+  return { x: Math.round(lerp(move.home.x, move.spot.x, k)), y: Math.round(lerp(move.home.y, move.spot.y, k)) };
 }
-// The cursor wanders over the whole desk; each pet looks at it from where it stands.
+
+// The cursor glides through hand-placed waypoints (time ms, x, y); it eases to a stop where a point repeats.
+const CURSOR_PATH = [
+  [T.cursorIn, 2010, 940],
+  [26150, MINIMIZE_BUTTON.x, MINIMIZE_BUTTON.y], [26400, MINIMIZE_BUTTON.x, MINIMIZE_BUTTON.y],
+  [27700, 960, 420], [28700, 1480, 430], [29600, 1660, 800], [30500, 1240, 1020], [31400, 760, 735],
+  [32300, 330, 900], [33200, 270, 400], [34100, 960, 470], [35000, 1330, 300],
+  [35800, W / 2, 230], [T.finale + 300, W / 2, 230],
+];
+const CLICKS = [T.minimize, T.finale];
+function cursorVelocity(i) {
+  const p = CURSOR_PATH;
+  if (i === 0 || i === p.length - 1) return [0, 0];
+  const same = (a, b) => a[1] === b[1] && a[2] === b[2];
+  if (same(p[i], p[i - 1]) || same(p[i], p[i + 1])) return [0, 0];
+  const span = p[i + 1][0] - p[i - 1][0];
+  return [(p[i + 1][1] - p[i - 1][1]) / span, (p[i + 1][2] - p[i - 1][2]) / span];
+}
 function cursorAt(t) {
-  const k = progress(t, T.cursorIn, T.lookEnd - 200);
-  const a = -Math.PI / 2 + easeInOutSine(k) * Math.PI * 2.2;
-  return { x: W / 2 + Math.cos(a) * 820 + Math.sin(a * 2) * 60, y: 560 + Math.sin(a) * 420 };
+  const p = CURSOR_PATH;
+  if (t <= p[0][0]) return { x: p[0][1], y: p[0][2] };
+  let i = 0;
+  while (i < p.length - 2 && t >= p[i + 1][0]) i++;
+  const d = p[i + 1][0] - p[i][0], u = clamp01((t - p[i][0]) / d);
+  const v0 = cursorVelocity(i), v1 = cursorVelocity(i + 1);
+  const h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
+  return {
+    x: h00 * p[i][1] + h10 * d * v0[0] + h01 * p[i + 1][1] + h11 * d * v1[0],
+    y: h00 * p[i][2] + h10 * d * v0[1] + h01 * p[i + 1][2] + h11 * d * v1[1],
+  };
 }
-function lookCell(i, t) {
-  const c = cursorAt(t), x = rowX(i), headY = FLOOR_Y - 85;
-  if (Math.hypot(c.x - x, c.y - headY) < 60) return { row: ROWS.idle, column: 0 };
-  const degrees = (Math.atan2(c.x - x, -(c.y - headY)) * 180 / Math.PI + 360) % 360;
+// Each pet looks at the cursor from where it stands (row 9 holds 000-157.5 degrees, row 10 the rest).
+function lookCell(position, t) {
+  const c = cursorAt(t), headY = position.y - 85;
+  if (Math.hypot(c.x - position.x, c.y - headY) < 60) return { row: ROWS.idle, column: 0 };
+  const degrees = (Math.atan2(c.x - position.x, -(c.y - headY)) * 180 / Math.PI + 360) % 360;
   const index = Math.round(degrees / 22.5) % 16;
   return { row: 9 + Math.floor(index / 8), column: index % 8 };
 }
-function groupActorsAt(t) {
-  if (t < T.allPop) return [];
+function castActorsAt(t) {
+  if (t < T.castPop) return [];
   const fade = 1 - easeInCubic(progress(t, DURATION_MS - 650, DURATION_MS - 80));
-  return IDS.map((id, i) => {
-    const seg = segmentAt(GROUP[id].track, t);
-    const x = groupX(i, t);
-    if (x > W + 140) return null;
-    return { id, ...cellFor(id, seg, t, seg.state === 'look' ? lookCell(i, t) : null), x, y: FLOOR_Y, scale: 1, alpha: fade, running: seg.state === 'running-right', i };
-  }).filter(Boolean);
+  return IDS.map(id => {
+    const move = MOVES[id], seg = segmentAt(move.track, t), position = castPosition(move, t);
+    const look = seg.state === 'look' ? lookCell(position, t) : null;
+    return { id, ...cellFor(id, seg, t, look), ...position, scale: 1, alpha: fade, running: seg.state.startsWith('running-') };
+  }).sort((a, b) => a.y - b.y);
 }
-function drawDust(i, t) {
-  const g = GROUP[IDS[i]];
-  for (let spawn = g.runAt + 80; spawn < Math.min(t, T.finalePop); spawn += 140) {
+// dust puffs come from the pet's own past positions; nothing is stored
+function drawDust(id, t) {
+  const move = MOVES[id];
+  const dx = move.spot.x - move.home.x, dy = move.spot.y - move.home.y, length = Math.hypot(dx, dy);
+  for (let spawn = move.runStart + 80; spawn < Math.min(t, move.arrive); spawn += 140) {
     const age = t - spawn;
     if (age > 520) continue;
-    const k = age / 520;
-    const x = rowX(i) + (spawn - g.runAt) * RUN_SPEED - (46 + k * 24);
+    const k = age / 520, p = castPosition(move, spawn), back = 46 + k * 24;
     ctx.save(); ctx.globalAlpha = (1 - k) * 0.6; ctx.fillStyle = '#ecdcd0';
-    ctx.beginPath(); ctx.arc(x, FLOOR_Y - 4 - k * 16, 5 + k * 11, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    ctx.beginPath(); ctx.arc(p.x - dx / length * back, p.y - dy / length * back - 4 - k * 16, 5 + k * 11, 0, Math.PI * 2); ctx.fill(); ctx.restore();
   }
 }
 function drawCursor(t) {
-  const alpha = presence(t, T.cursorIn, T.lookEnd + 150, 300);
+  const alpha = presence(t, T.cursorIn, T.finale + 700, 300);
   if (alpha <= 0) return;
   const { x, y } = cursorAt(t);
   for (let i = 1; i <= 8; i++) {
@@ -512,7 +559,14 @@ function drawCursor(t) {
     ctx.save(); ctx.globalAlpha = alpha * (1 - i / 9) * 0.35; ctx.fillStyle = '#f6b8c3';
     ctx.beginPath(); ctx.arc(p.x + 4, p.y + 6, 11 - i, 0, Math.PI * 2); ctx.fill(); ctx.restore();
   }
-  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.scale(1.8, 1.8);
+  for (const at of CLICKS) {
+    const k = progress(t, at, at + 420);
+    if (k <= 0 || k >= 1) continue;
+    ctx.save(); ctx.globalAlpha = alpha * (1 - k); ctx.strokeStyle = '#f29bb0'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(x, y, 10 + easeOutCubic(k) * 36, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
+  const press = CLICKS.some(at => t >= at - 60 && t < at + 90) ? 0.88 : 1;
+  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.scale(1.8 * press, 1.8 * press);
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 34); ctx.lineTo(9, 26); ctx.lineTo(15, 39); ctx.lineTo(21, 36); ctx.lineTo(15, 23); ctx.lineTo(26, 23); ctx.closePath();
   ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.lineWidth = 2.4; ctx.lineJoin = 'round'; ctx.strokeStyle = INK; ctx.stroke();
   ctx.restore();
@@ -522,45 +576,29 @@ function drawCursor(t) {
 function renderAt(t) {
   t = ((t % DURATION_MS) + DURATION_MS) % DURATION_MS;
   desktop();
-  // a soft floor for the group scenes
-  const floorAlpha = presence(t, T.allPop - 200, DURATION_MS - 100, 500);
-  if (floorAlpha > 0) {
-    ctx.save(); ctx.globalAlpha = floorAlpha; ctx.strokeStyle = '#ecdcd2'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(100, FLOOR_Y + 22); ctx.lineTo(W - 100, FLOOR_Y + 22); ctx.stroke(); ctx.restore();
-  }
   introTitle(t);
   drawWindow(t);
   for (const a of perchActorsAt(t)) { shadow(a.x, a.y, 2); drawCell(a.id, a.row, a.column, a.x, a.y, 2); }
   drawCarousel(t);
-  for (const a of groupActorsAt(t)) {
-    if (a.running) drawDust(a.i, t);
+  for (const a of castActorsAt(t)) {
+    if (a.running) drawDust(a.id, t);
     ctx.save(); ctx.globalAlpha = a.alpha; shadow(a.x, a.y, 1, a.alpha); drawCell(a.id, a.row, a.column, a.x, a.y, 1); ctx.restore();
   }
+  // puffs: Chiikawa arriving on the window, then the whole cast at every state change
+  puff(PERCH_X, windowTop(T.chiikawaPop), 2, t, T.chiikawaPop);
+  for (const s of DESK_STATES) for (const id of IDS) puff(HOME[id].x, HOME[id].y, 0.9, t, s.at);
   drawCursor(t);
-  // puffs: Chiikawa's entrance, every desk swap, the whole cast arriving twice
-  puff(PERCH_X, windowY(T.chiikawaPop), 2, t, T.chiikawaPop);
-  for (const s of DESK_STATES) puff(PERCH_X, WIN.deskY, 2, t, s.at);
-  puff(PERCH_X, windowY(T.allPop), 2, t, T.allPop);
-  for (let i = 0; i < IDS.length; i++) { puff(rowX(i), FLOOR_Y, 1, t, T.allPop + (i % 3) * 40); puff(rowX(i), FLOOR_Y, 1, t, T.finalePop + (i % 3) * 40); }
 
   caption(t, T.carousel + 100, T.carouselEnd - 100, COPY.meet, { y: 170, size: 58 });
-  caption(t, T.deskFirst - 300, T.allPop - 150, COPY.states, { x: WIN.x, y: 300, align: 'left', size: 58, maxWidth: PERCH_X - 190 - WIN.x });
-  caption(t, T.allPop + 250, T.lookEnd + 50, COPY.look, { y: 130, size: 58 });
-  caption(t, T.runStart + 150, T.finalePop - 250, COPY.run, { y: 130, size: 58 });
-  if (deskStateAt(t)) {
-    const active = deskStateAt(t).state;
-    DESK_STATES.forEach((s, i) => {
-      const on = s.state === active;
-      ctx.save(); ctx.globalAlpha = on ? 1 : 0.35; ctx.fillStyle = on ? STATE_COLORS[s.state] : '#cdbbb0';
-      roundRect(WIN.x + i * 38, 362, on ? 30 : 14, 12, 6); ctx.fill(); ctx.restore();
-    });
-  }
+  caption(t, T.castPop - 300, T.minimize, COPY.states, { y: 180, size: 56, maxWidth: 1000 });
+  drawStateDots(t);
+  caption(t, 27600, T.finale - 200, COPY.look, { y: 140, size: 58, maxWidth: 1200 });
   text(COPY.footer, W / 2, H - 24, { size: 18, color: '#c2b1a6', alpha: 0.9 * presence(t, 0, DURATION_MS - 60, 400), font: `${FONT_EN.split(',')[0]}, ${COPY.font}`, weight: 600 });
 }
 
 // render.py uses this to land GIF frames exactly on sprite changes.
 function spriteSignatureAt(t) {
-  return [...perchActorsAt(t), ...carouselActorsAt(t), ...groupActorsAt(t)].map(a => `${a.id}${a.row}.${a.column}`).join('|');
+  return [...perchActorsAt(t), ...carouselActorsAt(t), ...castActorsAt(t)].map(a => `${a.id}${a.row}.${a.column}`).join('|');
 }
 
 async function load() {
@@ -572,9 +610,9 @@ async function load() {
     img.onerror = () => reject(new Error(`missing spritesheet for ${id}`));
     img.src = `../pets/${id}/spritesheet.png`;
   })));
-  buildPerch();
-  buildGroup();
-  const strings = [COPY.subtitle, COPY.meet, COPY.states, COPY.look, COPY.run, COPY.outro, COPY.footer, COPY.ask, COPY.yes, COPY.no,
+  perchTrack = buildTrack('chiikawa', [{ t: T.chiikawaPop, state: 'idle', mode: 'now' }, { t: T.chiikawaPop + 1200, state: 'waving', mode: 'cycle' }, { t: T.chiikawaPop + 1201, state: 'idle', mode: 'cycle' }]);
+  buildCast();
+  const strings = [COPY.subtitle, COPY.meet, COPY.states, COPY.look, COPY.outro, COPY.footer, COPY.ask, COPY.yes, COPY.no,
     COPY.failedLine, COPY.doneLine, ...Object.values(COPY.chip), ...IDS.map(id => COPY.name(CAST[id]) + COPY.sub(CAST[id]))].join('');
   await Promise.all([
     document.fonts.load(`60px ${COPY.font}`, strings),

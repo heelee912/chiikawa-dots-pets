@@ -6,7 +6,7 @@
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-<img src="assets/promo-ko.gif" alt="치이카와 친구들 11명이 데스크톱 위에서 작업에 반응하고, 커서를 따라보고, 화면을 뛰어다니는 소개 영상" width="100%">
+<img src="assets/promo-ko.gif" alt="치이카와 친구들 11명이 창 옆에서 작업 상태에 맞춰 반응하고 화면 가운데로 달려와 커서를 따라보다 다 같이 점프하는 소개 영상" width="100%">
 
 [고화질 영상 보기 (MP4 · 1080p · 100fps)](assets/promo-ko.mp4) · [릴리즈 다운로드](https://github.com/heelee912/chiikawa-dots-pets/releases/latest)
 

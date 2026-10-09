@@ -6,7 +6,7 @@
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-<img src="assets/promo-en.gif" alt="Eleven Chiikawa friends react to work on a desktop, follow the cursor and run across the screen" width="100%">
+<img src="assets/promo-en.gif" alt="Eleven Chiikawa friends react to the work beside a window and run to the middle of the screen where they follow the cursor and jump together" width="100%">
 
 [Watch in full quality (MP4 · 1080p · 100fps)](assets/promo-en.mp4) · [Download releases](https://github.com/heelee912/chiikawa-dots-pets/releases/latest)
 

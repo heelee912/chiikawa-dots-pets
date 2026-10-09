@@ -6,7 +6,7 @@
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-<img src="assets/promo-ja.gif" alt="ちいかわの仲間11人がデスクトップで作業に反応し、カーソルを追いかけ、画面を走りまわる紹介動画" width="100%">
+<img src="assets/promo-ja.gif" alt="ちいかわの仲間11人がウィンドウの横で作業に反応し、画面の真ん中へ走ってきてカーソルを目で追い、みんなでジャンプする紹介動画" width="100%">
 
 [高画質で見る（MP4 · 1080p · 100fps）](assets/promo-ja.mp4) · [リリースをダウンロード](https://github.com/heelee912/chiikawa-dots-pets/releases/latest)
 
