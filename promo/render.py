@@ -32,10 +32,10 @@ ASSETS_DIR = REPO_ROOT / "assets"
 STEP_MS = 10                # 100 fps master clock
 POSTER_TIME_MS = 4600
 
-# The README GIF is a highlight cut of the full movie (group intro and parade);
-# the full movie with every scene is the MP4 linked under it.
-GIF_RANGES_MS = [(0, 12150)]
-GIF_WIDTH_PX = 720
+# The README GIF carries the whole movie at a smaller size; the MP4 linked under it
+# is the full-resolution 100 fps master.
+GIF_RANGES_MS = [(0, 43000)]
+GIF_WIDTH_PX = 640
 GIF_HEIGHT_PX = GIF_WIDTH_PX * 9 // 16
 GIF_MIN_DELAY_MS = 20       # browsers treat GIF delays under 20 ms as 100 ms
 GIF_TARGET_DELAY_MS = 50    # filler frames between sprite changes
