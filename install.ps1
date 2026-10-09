@@ -6,7 +6,7 @@
 $ErrorActionPreference = 'Stop'
 
 $repoRawUrl = 'https://raw.githubusercontent.com/heelee912/chiikawa-dots-pets/main'
-$availablePets = @('chiikawa', 'hachiware', 'usagi')
+$availablePets = @('chiikawa', 'hachiware', 'usagi', 'momonga', 'shisa', 'rakko', 'kurimanju', 'siren', 'furuhonya', 'anoko', 'dekatsuyo')
 $requestedPets = if ($env:CHIIKAWA_PETS) { $env:CHIIKAWA_PETS -split '[,\s]+' | Where-Object { $_ } } else { $availablePets }
 
 $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }

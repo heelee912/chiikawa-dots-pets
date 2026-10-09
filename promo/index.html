@@ -6,7 +6,7 @@
 <title>Chiikawa Dots Pets</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Jua&family=Fredoka:wght@600;700&display=block" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jua&family=Fredoka:wght@500;600;700&family=M+PLUS+Rounded+1c:wght@500;800&display=block" rel="stylesheet">
 <style>
   html, body { margin: 0; background: #fff6ea; }
   body { display: grid; place-items: center; min-height: 100vh; }
@@ -15,232 +15,205 @@
 </head>
 <body>
 <canvas id="stage" width="1920" height="1080"></canvas>
-<script>
-// Promo motion graphic for Chiikawa Dots Pets.
-// Every frame is a pure function of time (renderAt(ms)) so render.py can export
-// a frame-exact video while a browser can still play it live.
+<script type="module">
+// Promo motion graphic for Chiikawa Dots Pets (eleven pets).
 //
-// Rules the sprite source handoff asks for, enforced in code below:
-// - sprites are drawn untouched at an integer 2x scale with nearest-neighbor sampling
-// - every frame keeps its original hold time (all holds are multiples of 10 ms)
-// - a motion only changes at the end of a full cycle, never in the middle
+// Every frame is a pure function of time (renderAt(ms)), so promo/render.py can step
+// a 10 ms clock and export frame-exact video while a browser can also play it live.
+// URL parameters: ?lang=ko|en|ja picks the caption language, ?export stops live
+// playback, ?calm freezes the ambient background (used for the smaller README GIF).
+//
+// Sprite rules (the pets are owner-approved and must not change):
+// - cells come straight from pets/<id>/spritesheet.png at an integer 2x scale with
+//   nearest-neighbor sampling and integer positions
+// - every frame keeps the hold time recorded for that pet (promo/cast.json)
+// - a pet only changes motion at the end of a full cycle, or while a wipe hides it
+
+const params = new URLSearchParams(location.search);
+const LANG = ['ko', 'en', 'ja'].includes(params.get('lang')) ? params.get('lang') : 'ko';
+const CALM = params.has('calm');
 
 const W = 1920, H = 1080;
-const CELL_W = 192, CELL_H = 208;
-const SPRITE_SCALE = 2;
-const FEET_IN_CELL_PX = 198;     // the feet sit 198 px down inside each 208 px cell
-const GROUND_Y = 846;
-const RUN_SPEED_PX_PER_MS = 0.75;
+const CELL_W = 192, CELL_H = 208, FEET_IN_CELL = 198;
+const SCALE = 2;
+const DURATION_MS = 43000;
 
-const MOTIONS = {
-  idle:         { row: 0, holdsMs: [280, 110, 110, 140, 140, 320] },
-  runningRight: { row: 1, holdsMs: [120, 120, 120, 120, 120, 120, 120, 220] },
-  runningLeft:  { row: 2, holdsMs: [120, 120, 120, 120, 120, 120, 120, 220] },
-  waving:       { row: 3, holdsMs: [140, 140, 140, 280] },
-  jumping:      { row: 4, holdsMs: [140, 140, 140, 140, 280] },
-  failed:       { row: 5, holdsMs: [140, 140, 140, 140, 140, 140, 140, 240] },
-  waiting:      { row: 6, holdsMs: [150, 150, 150, 150, 150, 260] },
-  thinking:     { row: 7, holdsMs: [120, 120, 120, 120, 120, 220] }, // Codex calls this row "running"
-  review:       { row: 8, holdsMs: [150, 150, 150, 150, 150, 280] },
-  look:         { row: 9, holdsMs: Array(16).fill(180) },             // rows 9-10, clockwise from 12 o'clock
+const STATE_ROWS = { idle: 0, 'running-right': 1, 'running-left': 2, waving: 3, jumping: 4, failed: 5, waiting: 6, running: 7, review: 8 };
+
+// ---------- copy ----------
+const COPY = {
+  ko: {
+    font: '"Jua", "Malgun Gothic", sans-serif',
+    subtitle: '치이카와 친구들 11명이 Codex 데스크톱 펫으로',
+    run: '화면 위를 뛰어다니고',
+    meet: '친구들을 소개할게요',
+    states: 'Codex 작업 상태마다 다른 모션',
+    look: '16방향으로 두리번두리번',
+    outro: '지금 데스크톱에 데려가세요',
+    footer: '비공식 팬 제작물 · Chiikawa © Nagano',
+    stateLabels: { running: '작업 중', waiting: '기다리는 중', review: '검토 중', failed: '앗, 실패', jumping: '완료!' },
+    name: pet => pet.nameKo, subName: pet => pet.nameEn,
+  },
+  en: {
+    font: '"Fredoka", "Segoe UI", sans-serif',
+    subtitle: 'Eleven Chiikawa friends as Codex desktop pets',
+    run: 'They run across your screen',
+    meet: 'Meet all eleven',
+    states: 'A motion for every Codex state',
+    look: 'They look around in 16 directions',
+    outro: 'Bring them to your desktop',
+    footer: 'Unofficial fan work · Chiikawa © Nagano',
+    stateLabels: { running: 'Working', waiting: 'Waiting for you', review: 'Reviewing', failed: 'Oops, failed', jumping: 'Done!' },
+    name: pet => pet.nameEn, subName: pet => pet.nameJa,
+  },
+  ja: {
+    font: '"M PLUS Rounded 1c", "Yu Gothic", sans-serif',
+    subtitle: 'ちいかわの仲間11人がCodexのデスクトップペットに',
+    run: '画面の上を走りまわって',
+    meet: '仲間たちをご紹介',
+    states: 'Codexの作業状態ごとにちがう動き',
+    look: '16方向をきょろきょろ',
+    outro: 'いますぐデスクトップへ',
+    footer: '非公式ファンメイド · Chiikawa © Nagano',
+    stateLabels: { running: '作業中', waiting: 'まってるよ', review: 'レビュー中', failed: 'あっ、失敗', jumping: 'できた！' },
+    name: pet => pet.nameJa, subName: pet => pet.nameEn,
+  },
+}[LANG];
+const FONT_EN = '"Fredoka", "Segoe UI", sans-serif';
+const JA_NAMES = {
+  chiikawa: 'ちいかわ', hachiware: 'ハチワレ', usagi: 'うさぎ', momonga: 'モモンガ', shisa: 'シーサー', rakko: 'ラッコ',
+  kurimanju: 'くりまんじゅう', siren: 'セイレーン', furuhonya: '古本屋', anoko: 'あのこ', dekatsuyo: 'でかつよ',
 };
-const cycleMs = motion => MOTIONS[motion].holdsMs.reduce((a, b) => a + b, 0);
 
-const PETS = [
-  { id: 'chiikawa',  nameKo: '치이카와', nameEn: 'Chiikawa',  color: '#f2a3b3', homeX: 600 },
-  { id: 'hachiware', nameKo: '하치와레', nameEn: 'Hachiware', color: '#7fb0de', homeX: 960 },
-  { id: 'usagi',     nameKo: '우사기',   nameEn: 'Usagi',     color: '#efc75e', homeX: 1320 },
-];
-
-// ---------- choreography ----------
-// Reveal goes right to left so the front runner also leaves first and nobody overlaps.
-const REVEAL_MS = [1400, 1100, 800];
-const RUN_IN_START_MS = 5500;
-const RUN_IN_CYCLES = 2;
-const ARRIVAL_MS = RUN_IN_START_MS + RUN_IN_CYCLES * cycleMs('runningLeft');
-
-// After arrival all three share one sequence, so they move in unison.
-const SHARED_SEQUENCE = [
-  ['waving', 2], ['idle', 1],
-  ['thinking', 2], ['waiting', 2], ['review', 2], ['failed', 1], ['jumping', 2],
-  ['idle', 1], ['look', 1], ['idle', 1], ['jumping', 1], ['idle', 2],
-];
-
-function buildSegments(startMs, sequence) {
-  const segments = [];
-  let cursorMs = startMs;
-  for (const [motion, cycles] of sequence) {
-    const endMs = cursorMs + cycles * cycleMs(motion);
-    segments.push({ motion, startMs: cursorMs, endMs });
-    cursorMs = endMs;
-  }
-  return segments;
-}
-
-const SHARED_SEGMENTS = buildSegments(ARRIVAL_MS, SHARED_SEQUENCE);
-const segmentStart = (motion, nth = 0) => SHARED_SEGMENTS.filter(s => s.motion === motion)[nth].startMs;
-
-const STATUS_START_MS = segmentStart('thinking');
-const STATUS_END_MS = segmentStart('idle', 1);
-const LOOK_START_MS = segmentStart('look');
-const OUTRO_START_MS = segmentStart('idle', 2);
-const DURATION_MS = SHARED_SEGMENTS[SHARED_SEGMENTS.length - 1].endMs;
-
-function petTimeline(index) {
-  const revealMs = REVEAL_MS[index];
-  const intro = buildSegments(revealMs, [['jumping', 1], ['idle', 1]]);
-  const runOutStartMs = intro[intro.length - 1].endMs;
-  return {
-    revealMs,
-    runOutStartMs,
-    segments: [
-      ...intro,
-      { motion: 'runningRight', startMs: runOutStartMs, endMs: RUN_IN_START_MS },
-      { motion: 'runningLeft', startMs: RUN_IN_START_MS, endMs: ARRIVAL_MS },
-      ...SHARED_SEGMENTS,
-    ],
-  };
-}
-const TIMELINES = PETS.map((_, index) => petTimeline(index));
-
-function petXAt(pet, timeline, t) {
-  if (t >= timeline.runOutStartMs && t < RUN_IN_START_MS) return pet.homeX + (t - timeline.runOutStartMs) * RUN_SPEED_PX_PER_MS;
-  if (t >= RUN_IN_START_MS && t < ARRIVAL_MS) return pet.homeX + (ARRIVAL_MS - t) * RUN_SPEED_PX_PER_MS;
-  return pet.homeX;
-}
-
-// Returns which sprite cell a pet shows at time t, or null before it appears.
-function petFrameAt(index, t) {
-  const timeline = TIMELINES[index];
-  if (t < timeline.revealMs) return null;
-  const segment = timeline.segments.find(s => t >= s.startMs && t < s.endMs) ?? timeline.segments[timeline.segments.length - 1];
-  const holds = MOTIONS[segment.motion].holdsMs;
-  let localMs = (t - segment.startMs) % cycleMs(segment.motion);
-  let column = 0;
-  while (column < holds.length - 1 && localMs >= holds[column]) { localMs -= holds[column]; column++; }
-  const row = segment.motion === 'look' ? 9 + Math.floor(column / 8) : MOTIONS[segment.motion].row;
-  return { motion: segment.motion, row, column: column % 8, x: petXAt(PETS[index], timeline, t) };
-}
-
-// ---------- drawing setup ----------
 const INK = '#5a463d';
 const INK_SOFT = '#9a8479';
-const FONT_KO = '"Jua", "Malgun Gothic", sans-serif';
-const FONT_EN = '"Fredoka", "Segoe UI", sans-serif';
+const STATE_COLORS = { running: '#7fb0de', waiting: '#efb24f', review: '#ad95e0', failed: '#ec8c8c', jumping: '#77c99a' };
+
+// ---------- helpers ----------
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const progress = (t, a, b) => clamp01((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const easeOutCubic = k => 1 - Math.pow(1 - k, 3);
+const easeInCubic = k => k * k * k;
+const easeInOutCubic = k => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const easeOutBack = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const easeOutElastic = k => k === 0 || k === 1 ? k : Math.pow(2, -10 * k) * Math.sin((k * 10 - 0.75) * (2 * Math.PI / 3)) + 1;
+const presence = (t, inMs, outMs, fade = 380) => Math.min(easeOutCubic(progress(t, inMs, inMs + fade)), 1 - easeInCubic(progress(t, outMs - fade, outMs)));
+function seededRandom(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
 
-const clamp01 = v => Math.max(0, Math.min(1, v));
-const progress = (t, startMs, endMs) => clamp01((t - startMs) / (endMs - startMs));
-const easeOutCubic = k => 1 - Math.pow(1 - k, 3);
-const easeInCubic = k => k * k * k;
-const easeOutBack = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
-const easeOutElastic = k => k === 0 || k === 1 ? k : Math.pow(2, -10 * k) * Math.sin((k * 10 - 0.75) * (2 * Math.PI / 3)) + 1;
-
-// Fades an element in at enterMs and out at exitMs.
-function presence(t, enterMs, exitMs, fadeMs = 350) {
-  return Math.min(easeOutCubic(progress(t, enterMs, enterMs + fadeMs)), 1 - easeInCubic(progress(t, exitMs - fadeMs, exitMs)));
-}
-
-function seededRandom(seed) {
-  let s = seed >>> 0;
-  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
-}
-
+// ---------- cast and timing ----------
+let CAST = [];
 const sheets = {};
-function loadSheets() {
-  return Promise.all(PETS.map(pet => new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => { sheets[pet.id] = img; resolve(); };
-    img.onerror = () => reject(new Error(`missing spritesheet for ${pet.id}`));
-    img.src = `../pets/${pet.id}/spritesheet.png`;
-  })));
+
+function cycleMs(pet, state) { return pet.holdsMs[state].reduce((a, b) => a + b, 0); }
+
+function columnAt(holds, localMs) {
+  const total = holds.reduce((a, b) => a + b, 0);
+  let t = ((localMs % total) + total) % total;
+  for (let i = 0; i < holds.length; i++) { if (t < holds[i]) return i; t -= holds[i]; }
+  return holds.length - 1;
 }
 
-function drawSpriteCell(petId, row, column, x) {
-  const left = Math.round(x - CELL_W * SPRITE_SCALE / 2);
-  const top = GROUND_Y - FEET_IN_CELL_PX * SPRITE_SCALE;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(sheets[petId], column * CELL_W, row * CELL_H, CELL_W, CELL_H, left, top, CELL_W * SPRITE_SCALE, CELL_H * SPRITE_SCALE);
-  ctx.imageSmoothingEnabled = true;
-}
-
-function drawShadow(x, alpha = 1) {
-  ctx.save();
-  ctx.globalAlpha = 0.16 * alpha;
-  ctx.fillStyle = '#7b5d4e';
-  ctx.beginPath();
-  ctx.ellipse(x, GROUND_Y + 4, 118, 20, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// ---------- background ----------
-const BACKGROUND_DOTS = (() => {
-  const rand = seededRandom(7);
-  const palette = ['#fbd3dc', '#cfe2f5', '#fbe9b4', '#e4dcf6', '#d7efe0'];
-  return Array.from({ length: 30 }, () => ({
-    x: rand() * W, y: rand() * H, radius: 12 + rand() * 44,
-    color: palette[Math.floor(rand() * palette.length)],
-    driftY: -0.004 - rand() * 0.008, wobble: rand() * Math.PI * 2,
-  }));
-})();
-
-// ?calm freezes the floating dots; the README GIF uses it so frames only differ where the pets move.
-const CALM_BACKGROUND = new URLSearchParams(location.search).has('calm');
-
-function drawBackground(t) {
-  const dotTimeMs = CALM_BACKGROUND ? 0 : t;
-  const gradient = ctx.createLinearGradient(0, 0, 0, H);
-  gradient.addColorStop(0, '#fff8ee');
-  gradient.addColorStop(1, '#fdeef1');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.globalAlpha = 0.55;
-  for (const dot of BACKGROUND_DOTS) {
-    const x = dot.x + Math.sin(dotTimeMs / 2200 + dot.wobble) * 12;
-    const y = ((dot.y + dot.driftY * dotTimeMs) % (H + 120) + H + 120) % (H + 120) - 60;
-    ctx.fillStyle = dot.color;
-    ctx.beginPath();
-    ctx.arc(x, y, dot.radius, 0, Math.PI * 2);
-    ctx.fill();
+// Turns a list of {t, state, mode} requests into exact segments. "cycle" waits for the
+// running motion to finish its current loop, "restart" switches at once (only used while
+// the pet is hidden or appearing), "look" segments are static poses and switch at once.
+function buildTrack(pet, events) {
+  const segments = [];
+  let current = null;
+  for (const ev of events) {
+    let switchAt = ev.t;
+    if (current && ev.mode === 'cycle' && current.state !== 'look') {
+      const length = cycleMs(pet, current.state);
+      const loops = Math.max(1, Math.ceil((ev.t - current.start) / length));
+      switchAt = current.start + loops * length;
+    }
+    if (current) { current.end = switchAt; segments.push(current); }
+    current = { state: ev.state, start: switchAt, end: Infinity };
   }
-  ctx.globalAlpha = 1;
-
-  const floor = ctx.createRadialGradient(W / 2, GROUND_Y, 40, W / 2, GROUND_Y, 900);
-  floor.addColorStop(0, 'rgba(255,255,255,0.8)');
-  floor.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = floor;
-  ctx.fillRect(0, 0, W, H);
+  if (current) segments.push(current);
+  return segments;
 }
 
-function drawFanWorkNotice(t) {
-  const alpha = 0.85 * (1 - easeInCubic(progress(t, DURATION_MS - 600, DURATION_MS - 60))) * easeOutCubic(progress(t, 0, 400));
-  drawText('비공식 팬 제작물 · Unofficial fan work · Chiikawa © Nagano', W / 2, H - 48, { font: '"Fredoka", "Jua", sans-serif', size: 22, color: '#b8a59a', alpha, weight: 600 });
+function segmentAt(track, t) {
+  for (const seg of track) if (t >= seg.start && t < seg.end) return seg;
+  return null;
 }
 
-// ---------- typography ----------
-function drawText(text, x, y, { font, size, color = INK, alpha = 1, weight = '' }) {
+// ---------- layout ----------
+// A two-row group photo: the back row stands higher so every face stays visible.
+const FORMATION = {
+  momonga: [210, 680], kurimanju: [510, 680], rakko: [810, 680], dekatsuyo: [1110, 680], furuhonya: [1410, 680], anoko: [1710, 680],
+  siren: [300, 950], chiikawa: [630, 950], hachiware: [960, 950], usagi: [1290, 950], shisa: [1620, 950],
+};
+const DRAW_ORDER = ['momonga', 'kurimanju', 'rakko', 'dekatsuyo', 'furuhonya', 'anoko', 'siren', 'chiikawa', 'hachiware', 'usagi', 'shisa'];
+const REVEAL_ORDER = ['hachiware', 'chiikawa', 'usagi', 'siren', 'shisa', 'rakko', 'dekatsuyo', 'kurimanju', 'furuhonya', 'momonga', 'anoko'];
+
+const T = {
+  revealStart: 900, revealStep: 130,
+  runStart: 5300, runTurn: 9100, runStop: 11500,
+  wipe1: 12500, wipe2: 22500, wipeHalf: 320,
+  statesIdle: 22500, states: [['running', 23000], ['waiting', 24800], ['review', 26600], ['failed', 28400], ['jumping', 30200]], statesEnd: 32000,
+  look: 32400, lookEnd: 37000,
+  outro: 37000, outroJump: 37500,
+};
+const revealTime = id => T.revealStart + REVEAL_ORDER.indexOf(id) * T.revealStep;
+
+const TRACKS = {};
+function buildTracks() {
+  for (const pet of CAST) {
+    const reveal = revealTime(pet.id);
+    const order = DRAW_ORDER.indexOf(pet.id);
+    TRACKS[pet.id] = buildTrack(pet, [
+      { t: reveal, state: 'jumping', mode: 'restart' },
+      { t: reveal + 1, state: 'idle', mode: 'cycle' },
+      { t: T.runStart, state: 'running-right', mode: 'cycle' },
+      { t: T.runTurn, state: 'running-left', mode: 'cycle' },
+      { t: T.runStop, state: 'idle', mode: 'cycle' },
+      { t: T.statesIdle, state: 'idle', mode: 'restart' },
+      ...T.states.map(([state, t]) => ({ t, state, mode: 'cycle' })),
+      { t: T.statesEnd, state: 'idle', mode: 'cycle' },
+      { t: T.look, state: 'look', mode: 'cycle' },
+      { t: T.lookEnd, state: 'idle', mode: 'restart' },
+      { t: T.outroJump + order * 70, state: 'jumping', mode: 'cycle' },
+      { t: T.outroJump + order * 70 + 1, state: 'idle', mode: 'cycle' },
+    ]);
+  }
+}
+
+// ---------- ground scroll for the running parade ----------
+// Positive velocity moves the ground left, so the pets appear to run right.
+function groundVelocity(t) {
+  const v = 0.62;
+  if (t < T.runStart) return 0;
+  if (t < T.runStart + 700) return v * easeInOutCubic(progress(t, T.runStart, T.runStart + 700));
+  if (t < T.runTurn) return v;
+  if (t < T.runTurn + 900) return lerp(v, -v, easeInOutCubic(progress(t, T.runTurn, T.runTurn + 900)));
+  if (t < T.runStop) return -v;
+  if (t < T.runStop + 700) return -v * (1 - easeInOutCubic(progress(t, T.runStop, T.runStop + 700)));
+  return 0;
+}
+const SCROLL = (() => {
+  const steps = DURATION_MS / 10 + 2;
+  const table = new Float64Array(steps);
+  for (let i = 1; i < steps; i++) table[i] = table[i - 1] + groundVelocity((i - 1) * 10) * 10;
+  return table;
+})();
+const scrollAt = t => { const i = Math.max(0, Math.min(SCROLL.length - 2, Math.floor(t / 10))); return lerp(SCROLL[i], SCROLL[i + 1], (t - i * 10) / 10); };
+
+// ---------- drawing primitives ----------
+function drawText(text, x, y, { font = COPY.font, size, color = INK, alpha = 1, weight = '', align = 'center' }) {
   if (alpha <= 0) return;
   ctx.save();
   ctx.globalAlpha *= alpha;
   ctx.font = `${weight} ${size}px ${font}`;
-  ctx.textAlign = 'center';
+  ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
   ctx.restore();
-}
-
-// Korean headline with an English line underneath, sliding up as it fades in.
-function drawCaption(t, enterMs, exitMs, ko, en) {
-  const alpha = presence(t, enterMs, exitMs, 420);
-  if (alpha <= 0) return;
-  const rise = (1 - easeOutCubic(progress(t, enterMs, enterMs + 520))) * 26;
-  drawText(ko, W / 2, 132 + rise, { font: FONT_KO, size: 76, alpha });
-  drawText(en, W / 2, 202 + rise, { font: FONT_EN, size: 34, color: INK_SOFT, alpha, weight: 600 });
 }
 
 function roundedRect(x, y, w, h, r) {
@@ -253,12 +226,10 @@ function roundedRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawPill(cx, cy, w, h, fill, { alpha = 1, stroke = null } = {}) {
+function drawPill(cx, cy, w, h, fill, { alpha = 1, stroke = null, shadow = true } = {}) {
   ctx.save();
   ctx.globalAlpha *= alpha;
-  ctx.shadowColor = 'rgba(122, 90, 70, 0.16)';
-  ctx.shadowBlur = 24;
-  ctx.shadowOffsetY = 8;
+  if (shadow) { ctx.shadowColor = 'rgba(122, 90, 70, 0.16)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8; }
   roundedRect(cx - w / 2, cy - h / 2, w, h, h / 2);
   ctx.fillStyle = fill;
   ctx.fill();
@@ -267,132 +238,272 @@ function drawPill(cx, cy, w, h, fill, { alpha = 1, stroke = null } = {}) {
   ctx.restore();
 }
 
-// Runs fn inside a uniform scale around (cx, cy); used for text and UI, never for sprites.
-function withScale(cx, cy, scale, fn) {
+function withScale(cx, cy, s, fn) {
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy); fn(); ctx.restore();
+}
+
+function drawCell(petId, row, column, feetX, feetY) {
+  const left = Math.round(feetX - CELL_W * SCALE / 2);
+  const top = Math.round(feetY - FEET_IN_CELL * SCALE);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sheets[petId], column * CELL_W, row * CELL_H, CELL_W, CELL_H, left, top, CELL_W * SCALE, CELL_H * SCALE);
+  ctx.imageSmoothingEnabled = true;
+}
+
+function drawShadow(x, y, alpha = 1) {
   ctx.save();
-  ctx.translate(cx, cy);
-  ctx.scale(scale, scale);
-  ctx.translate(-cx, -cy);
-  fn();
+  ctx.globalAlpha = 0.15 * alpha;
+  ctx.fillStyle = '#7b5d4e';
+  ctx.beginPath();
+  ctx.ellipse(x, y + 4, 128, 20, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
-// ---------- scene: intro ----------
-function drawIntroTitle(t) {
-  const alpha = presence(t, 150, 2900, 400);
-  withScale(W / 2, 250, 0.6 + 0.4 * easeOutBack(progress(t, 150, 850)), () => {
-    drawText('Chiikawa Dots Pets', W / 2, 250, { font: FONT_EN, size: 128, alpha, weight: 700 });
+// ---------- background ----------
+const BLOBS = [
+  { x: 0.18, y: 0.28, r: 620, color: [251, 211, 220], phase: 0 },
+  { x: 0.82, y: 0.22, r: 560, color: [207, 226, 245], phase: 2.1 },
+  { x: 0.55, y: 0.82, r: 700, color: [251, 233, 180], phase: 4.2 },
+];
+const DOTS = (() => {
+  const rand = seededRandom(11);
+  const palette = ['#fbd3dc', '#cfe2f5', '#fbe9b4', '#e4dcf6', '#d7efe0'];
+  return Array.from({ length: 36 }, () => ({ x: rand() * W, y: rand() * H * 0.62, r: 6 + rand() * 26, color: palette[Math.floor(rand() * palette.length)], depth: 0.25 + rand() * 0.5, wobble: rand() * 6.28 }));
+})();
+const GROUND_MARKS = (() => {
+  const rand = seededRandom(5);
+  return Array.from({ length: 26 }, (_, i) => ({ x: i * 150 + rand() * 60, lane: i % 2, kind: Math.floor(rand() * 3) }));
+})();
+
+function drawBackground(t) {
+  const ambient = CALM ? 0 : t;
+  const gradient = ctx.createLinearGradient(0, 0, 0, H);
+  gradient.addColorStop(0, '#fff8ee');
+  gradient.addColorStop(1, '#fdf0ec');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+
+  for (const blob of BLOBS) {
+    const x = blob.x * W + Math.sin(ambient / 5200 + blob.phase) * 70;
+    const y = blob.y * H + Math.cos(ambient / 6100 + blob.phase) * 50;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, blob.r);
+    g.addColorStop(0, `rgba(${blob.color.join(',')},0.55)`);
+    g.addColorStop(1, `rgba(${blob.color.join(',')},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // the floor: a soft plane that the group stands on
+  const floor = ctx.createLinearGradient(0, 540, 0, H);
+  floor.addColorStop(0, 'rgba(255,255,255,0)');
+  floor.addColorStop(0.35, 'rgba(255,255,255,0.65)');
+  floor.addColorStop(1, 'rgba(255,244,236,0.9)');
+  ctx.fillStyle = floor;
+  ctx.fillRect(0, 540, W, H - 540);
+
+  const scroll = scrollAt(t);
+  ctx.globalAlpha = 0.5;
+  for (const dot of DOTS) {
+    const span = W + 160;
+    const x = (((dot.x - scroll * dot.depth + Math.sin(ambient / 2400 + dot.wobble) * 10) % span) + span) % span - 80;
+    ctx.fillStyle = dot.color;
+    ctx.beginPath(); ctx.arc(x, dot.y, dot.r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // ground marks only show while the parade is moving
+  const groundAlpha = Math.min(presence(t, T.runStart - 200, T.runStop + 1100, 500), 1);
+  if (groundAlpha > 0) {
+    const span = 26 * 150;
+    for (const mark of GROUND_MARKS) {
+      const y = mark.lane ? 970 : 700;
+      const x = (((mark.x - scroll) % span) + span) % span - 200;
+      ctx.save();
+      ctx.globalAlpha = groundAlpha * 0.55;
+      ctx.strokeStyle = '#e3cdbd'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      if (mark.kind === 0) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 46, y); ctx.stroke(); }
+      if (mark.kind === 1) { for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(x + k * 9, y + 6); ctx.lineTo(x + k * 13, y - 10); ctx.stroke(); } }
+      if (mark.kind === 2) { ctx.fillStyle = '#ead8ca'; ctx.beginPath(); ctx.ellipse(x, y, 10, 6, 0, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+    }
+  }
+}
+
+// ---------- captions ----------
+function drawCaption(t, inMs, outMs, text, y = 112) {
+  const alpha = presence(t, inMs, outMs, 420);
+  if (alpha <= 0) return;
+  const rise = (1 - easeOutCubic(progress(t, inMs, inMs + 560))) * 28;
+  drawText(text, W / 2, y + rise, { size: 74, alpha, weight: LANG === 'ja' ? 800 : (LANG === 'en' ? 600 : '') });
+}
+
+// "Chiikawa Dots Pets" with letters that drop in one after another.
+function drawTitle(t, inMs, outMs, y, size) {
+  const alpha = presence(t, inMs, outMs, 420);
+  if (alpha <= 0) return;
+  const title = 'Chiikawa Dots Pets';
+  ctx.save();
+  ctx.font = `700 ${size}px ${FONT_EN}`;
+  const widths = [...title].map(ch => ctx.measureText(ch).width);
+  const total = widths.reduce((a, b) => a + b, 0);
+  let x = W / 2 - total / 2;
+  const palette = ['#5a463d', '#5a463d', '#5a463d'];
+  [...title].forEach((ch, i) => {
+    const k = easeOutBack(progress(t, inMs + i * 28, inMs + i * 28 + 520));
+    const drop = (1 - k) * -60;
+    ctx.globalAlpha = alpha * clamp01(k * 1.4);
+    ctx.fillStyle = ch === ' ' ? 'transparent' : palette[i % palette.length];
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ch, x, y + drop);
+    x += widths[i];
   });
-  const subAlpha = presence(t, 650, 2900, 400);
-  const rise = (1 - easeOutCubic(progress(t, 650, 1150))) * 24;
-  drawText('치이카와 3인방 Codex 데스크톱 펫', W / 2, 362 + rise, { font: FONT_KO, size: 52, color: INK_SOFT, alpha: subAlpha });
+  ctx.restore();
 }
 
-// Each pet appears inside a growing circle with a ring burst in its color.
-function revealClip(index, t) {
-  const revealMs = REVEAL_MS[index];
-  const k = progress(t, revealMs - 120, revealMs + 380);
-  return k >= 1 ? null : Math.max(0, easeOutBack(k)) * 300;
+// ---------- reveal and effects ----------
+function revealRadius(id, t) {
+  const r = revealTime(id);
+  const k = progress(t, r - 100, r + 360);
+  return k >= 1 ? null : Math.max(0, easeOutBack(k)) * 260;
 }
 
-function drawRevealRing(pet, index, t) {
-  const k = progress(t, REVEAL_MS[index] - 120, REVEAL_MS[index] + 520);
+function drawRevealBurst(pet, t) {
+  const r = revealTime(pet.id);
+  const k = progress(t, r - 100, r + 620);
   if (k <= 0 || k >= 1) return;
+  const [x, y] = FORMATION[pet.id];
+  const cy = y - 170;
   ctx.save();
   ctx.globalAlpha = (1 - k) * 0.9;
   ctx.strokeStyle = pet.color;
-  ctx.lineWidth = 14 * (1 - k) + 2;
-  ctx.beginPath();
-  ctx.arc(pet.homeX, GROUND_Y - 190, 60 + easeOutCubic(k) * 270, 0, Math.PI * 2);
-  ctx.stroke();
+  ctx.lineWidth = 12 * (1 - k) + 2;
+  ctx.beginPath(); ctx.arc(x, cy, 70 + easeOutCubic(k) * 200, 0, Math.PI * 2); ctx.stroke();
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4 + 0.3;
+    const d = 120 + easeOutCubic(k) * 150;
+    ctx.fillStyle = pet.color;
+    ctx.beginPath(); ctx.arc(x + Math.cos(a) * d, cy + Math.sin(a) * d * 0.8, 9 * (1 - k) + 2, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.restore();
 }
 
-// ---------- scene: running ----------
-// Dust puffs come from the runner's past positions, so nothing is stored between frames.
-function drawDust(t, xAt, startMs, endMs, behind) {
-  for (let spawnMs = startMs; spawnMs < Math.min(t, endMs); spawnMs += 160) {
-    const ageMs = t - spawnMs;
-    if (ageMs > 560) continue;
-    const k = ageMs / 560;
+// Dust puffs come from each runner's own run segment, so nothing is stored between frames.
+function drawDust(pet, t) {
+  const [x, y] = FORMATION[pet.id];
+  for (const seg of TRACKS[pet.id]) {
+    if (seg.state !== 'running-right' && seg.state !== 'running-left') continue;
+    const behind = seg.state === 'running-right' ? -1 : 1;
+    const first = Math.ceil(seg.start / 170) * 170;
+    for (let spawn = first; spawn < Math.min(seg.end, t); spawn += 170) {
+      const age = t - spawn;
+      if (age > 620) continue;
+      const k = age / 620;
+      const px = x + behind * 110 - (scrollAt(t) - scrollAt(spawn));
+      ctx.save();
+      ctx.globalAlpha = (1 - k) * 0.55;
+      ctx.fillStyle = '#ecdccf';
+      ctx.beginPath(); ctx.arc(px, y - 8 - k * 30, 11 + k * 22, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+// ---------- the group photo scenes ----------
+const STAR_ORBIT = { cx: 960, cy: 600, rx: 860, ry: 400 };
+function starAt(t) {
+  const k = progress(t, T.look + 200, T.lookEnd - 200);
+  const angle = -Math.PI / 2 + easeInOutCubic(k) * Math.PI * 2;
+  return { x: STAR_ORBIT.cx + Math.cos(angle) * STAR_ORBIT.rx, y: STAR_ORBIT.cy + Math.sin(angle) * STAR_ORBIT.ry };
+}
+
+function lookCell(pet, t) {
+  const [x, y] = FORMATION[pet.id];
+  const star = starAt(t);
+  const degrees = (Math.atan2(star.x - x, -(star.y - (y - 170))) * 180 / Math.PI + 360) % 360; // 0 = up, clockwise
+  const index = Math.round(degrees / 22.5) % 16;
+  return { row: 9 + Math.floor(index / 8), column: index % 8 };
+}
+
+function formationVisible(t) { return t < T.wipe1 || t >= T.wipe2; }
+
+function drawFormation(t) {
+  if (!formationVisible(t)) return;
+  for (const id of DRAW_ORDER) {
+    const pet = CAST.find(p => p.id === id);
+    if (t < revealTime(id) - 100) continue;
+    const seg = segmentAt(TRACKS[id], t);
+    if (!seg) continue;
+    const [x, y] = FORMATION[id];
+    const fade = 1 - easeInCubic(progress(t, DURATION_MS - 650, DURATION_MS - 80));
+    let cell;
+    if (seg.state === 'look') cell = lookCell(pet, t);
+    else cell = { row: STATE_ROWS[seg.state], column: columnAt(pet.holdsMs[seg.state], t - seg.start) };
     ctx.save();
-    ctx.globalAlpha = (1 - k) * 0.6;
-    ctx.fillStyle = '#ead9cc';
-    ctx.beginPath();
-    ctx.arc(xAt(spawnMs) + behind * (90 + k * 50), GROUND_Y - 8 - k * 30, 10 + k * 20, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = fade;
+    const r = revealRadius(id, t);
+    if (r !== null) { ctx.beginPath(); ctx.arc(x, y - 170, r, 0, Math.PI * 2); ctx.clip(); }
+    drawShadow(x, y, fade);
+    drawCell(id, cell.row, cell.column, x, y);
     ctx.restore();
   }
 }
 
-function drawRunDust(t) {
-  PETS.forEach((pet, index) => {
-    const timeline = TIMELINES[index];
-    const xAt = ms => petXAt(pet, timeline, ms);
-    drawDust(t, xAt, timeline.runOutStartMs + 80, RUN_IN_START_MS, -1);
-    drawDust(t, xAt, RUN_IN_START_MS, ARRIVAL_MS - 300, 1);
-  });
+function drawStar(t) {
+  const alpha = presence(t, T.look, T.lookEnd, 300);
+  if (alpha <= 0) return;
+  for (let i = 1; i <= 10; i++) {
+    const p = starAt(t - i * 32);
+    ctx.save(); ctx.globalAlpha = alpha * (1 - i / 11) * 0.45; ctx.fillStyle = '#f6b8c3';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 15 - i, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  const { x, y } = starAt(t);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y); ctx.rotate(t / 380);
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) { const r = i % 2 === 0 ? 40 : 17; const a = i * Math.PI / 5 - Math.PI / 2; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+  ctx.closePath();
+  ctx.fillStyle = '#ffd36e'; ctx.fill();
+  ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.strokeStyle = '#e7a93a'; ctx.stroke();
+  ctx.restore();
 }
 
-// ---------- scene: names ----------
-function drawNameTags(t) {
-  PETS.forEach((pet, index) => {
-    const enterMs = ARRIVAL_MS + 120 + index * 160;
-    const alpha = presence(t, enterMs, STATUS_START_MS - 150, 300);
-    if (alpha <= 0) return;
-    const cy = GROUND_Y + 92;
-    withScale(pet.homeX, cy, easeOutBack(progress(t, enterMs, enterMs + 480)), () => {
-      drawPill(pet.homeX, cy, 264, 98, '#ffffff', { alpha, stroke: pet.color });
-      drawText(pet.nameKo, pet.homeX, cy - 14, { font: FONT_KO, size: 44, alpha });
-      drawText(pet.nameEn, pet.homeX, cy + 26, { font: FONT_EN, size: 24, color: INK_SOFT, alpha, weight: 600 });
-    });
-  });
+function stateIndexAt(t) {
+  let index = -1;
+  T.states.forEach(([, start], i) => { if (t >= start) index = i; });
+  return index;
 }
-
-// ---------- scene: Codex states ----------
-// Korean labels use the motion names from the sprite source; English shows the Codex state.
-const STATUS_LABELS = {
-  thinking: { ko: '생각', en: 'running', color: '#7fb0de' },
-  waiting:  { ko: '기다림', en: 'waiting', color: '#efb24f' },
-  review:   { ko: '검토', en: 'review', color: '#ad95e0' },
-  failed:   { ko: '실패 반응', en: 'failed', color: '#ec8c8c' },
-  jumping:  { ko: '점프', en: 'jumping', color: '#77c99a' },
-};
-const STATUS_SEGMENTS = SHARED_SEGMENTS.filter(s => s.startMs >= STATUS_START_MS && s.startMs < STATUS_END_MS);
 
 function drawStatusPill(t) {
-  const alpha = presence(t, STATUS_START_MS - 250, STATUS_END_MS + 250, 300);
+  const alpha = presence(t, T.states[0][1] - 300, T.statesEnd + 300, 300);
   if (alpha <= 0) return;
-  const activeIndex = Math.max(0, STATUS_SEGMENTS.findIndex(s => t >= s.startMs && t < s.endMs));
-  const segment = t >= STATUS_END_MS ? STATUS_SEGMENTS[STATUS_SEGMENTS.length - 1] : STATUS_SEGMENTS[activeIndex];
-  const label = STATUS_LABELS[segment.motion];
-  const cy = 330;
-  const pop = segment === STATUS_SEGMENTS[0]
-    ? easeOutBack(progress(t, STATUS_START_MS - 250, STATUS_START_MS + 250))
-    : 0.88 + 0.12 * easeOutElastic(progress(t, segment.startMs, segment.startMs + 650));
-
+  const index = Math.max(0, stateIndexAt(t));
+  const [state, start] = T.states[index];
+  const label = COPY.stateLabels[state];
+  const color = STATE_COLORS[state];
+  const cy = 214;
+  const pop = index === 0 ? easeOutBack(progress(t, start - 300, start + 200)) : 0.86 + 0.14 * easeOutElastic(progress(t, start, start + 700));
   withScale(W / 2, cy, pop, () => {
-    drawPill(W / 2, cy, 470, 100, '#ffffff', { alpha });
+    drawPill(W / 2, cy, 520, 92, '#ffffff', { alpha });
     const pulse = 0.5 + 0.5 * Math.sin(t / 150);
     ctx.save();
-    ctx.fillStyle = label.color;
+    ctx.fillStyle = color;
     ctx.globalAlpha = alpha * (0.22 + pulse * 0.22);
-    ctx.beginPath(); ctx.arc(W / 2 - 170, cy, 25 + pulse * 6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W / 2 - 200, cy, 24 + pulse * 6, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = alpha;
-    ctx.beginPath(); ctx.arc(W / 2 - 170, cy, 15, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W / 2 - 200, cy, 14, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-    const textAlpha = alpha * easeOutCubic(progress(t, segment.startMs, segment.startMs + 220));
-    drawText(label.ko, W / 2 + 30, cy - 12, { font: FONT_KO, size: 46, alpha: textAlpha });
-    drawText(label.en, W / 2 + 30, cy + 27, { font: FONT_EN, size: 24, color: INK_SOFT, alpha: textAlpha, weight: 600 });
+    const textAlpha = alpha * easeOutCubic(progress(t, start, start + 240));
+    drawText(label, W / 2 + 22, cy - 1, { size: 46, alpha: textAlpha, weight: LANG === 'ko' ? '' : 700 });
   });
-
-  STATUS_SEGMENTS.forEach((chip, chipIndex) => {
-    const active = chip === segment;
-    const x = W / 2 + (chipIndex - (STATUS_SEGMENTS.length - 1) / 2) * 44;
+  T.states.forEach(([chipState], i) => {
+    const active = i === index;
+    const x = W / 2 + (i - (T.states.length - 1) / 2) * 42;
     ctx.save();
     ctx.globalAlpha = alpha * (active ? 1 : 0.4);
-    ctx.fillStyle = active ? STATUS_LABELS[chip.motion].color : '#cdbbb0';
-    roundedRect(x - (active ? 18 : 8), 412, active ? 36 : 16, 16, 8);
+    ctx.fillStyle = active ? STATE_COLORS[chipState] : '#cdbbb0';
+    roundedRect(x - (active ? 17 : 7), 276 - 7, active ? 34 : 14, 14, 7);
     ctx.fill();
     ctx.restore();
   });
@@ -400,173 +511,191 @@ function drawStatusPill(t) {
 
 const CONFETTI = (() => {
   const rand = seededRandom(42);
-  const palette = ['#f2a3b3', '#7fb0de', '#efc75e', '#77c99a', '#ad95e0'];
-  return Array.from({ length: 90 }, () => ({
-    angle: -Math.PI / 2 + (rand() - 0.5) * Math.PI * 1.2, speed: 0.7 + rand() * 0.9,
-    spin: (rand() - 0.5) * 0.02, size: 10 + rand() * 12, color: palette[Math.floor(rand() * palette.length)],
-    originX: W / 2 + (rand() - 0.5) * 1000,
-  }));
+  const palette = ['#f2a3b3', '#7fb0de', '#efc75e', '#77c99a', '#ad95e0', '#f0a066'];
+  return Array.from({ length: 120 }, () => ({ angle: -Math.PI / 2 + (rand() - 0.5) * Math.PI * 1.3, speed: 0.7 + rand() * 1.0, spin: (rand() - 0.5) * 0.02, size: 10 + rand() * 14, color: palette[Math.floor(rand() * palette.length)], x: W / 2 + (rand() - 0.5) * 1500 }));
 })();
-
-function drawConfetti(elapsedMs) {
-  if (elapsedMs < 0 || elapsedMs > 1500) return;
-  for (const piece of CONFETTI) {
-    const x = piece.originX + Math.cos(piece.angle) * piece.speed * elapsedMs;
-    const y = GROUND_Y - 300 + Math.sin(piece.angle) * piece.speed * elapsedMs + 0.0011 * elapsedMs * elapsedMs;
+function drawConfetti(elapsed, originY) {
+  if (elapsed < 0 || elapsed > 1700) return;
+  for (const p of CONFETTI) {
+    const x = p.x + Math.cos(p.angle) * p.speed * elapsed;
+    const y = originY + Math.sin(p.angle) * p.speed * elapsed + 0.0011 * elapsed * elapsed;
     ctx.save();
-    ctx.globalAlpha = 1 - clamp01((elapsedMs - 1000) / 500);
-    ctx.translate(x, y);
-    ctx.rotate(piece.spin * elapsedMs);
-    ctx.fillStyle = piece.color;
-    ctx.fillRect(-piece.size / 2, -piece.size / 4, piece.size, piece.size / 2);
+    ctx.globalAlpha = 1 - clamp01((elapsed - 1100) / 600);
+    ctx.translate(x, y); ctx.rotate(p.spin * elapsed);
+    ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
     ctx.restore();
   }
 }
 
-// Small overlays sit beside the pets and never cover the drawings.
-function drawStatusEffects(t) {
-  const segment = STATUS_SEGMENTS.find(s => t >= s.startMs && t < s.endMs);
-  if (!segment) return;
-  const elapsedMs = t - segment.startMs;
-  const appear = easeOutCubic(progress(elapsedMs, 0, 250));
-  if (segment.motion === 'thinking') PETS.forEach(pet => {
-    for (let i = 0; i < 3; i++) {
-      const k = (Math.sin(t / 160 - i * 0.9) + 1) / 2;
-      ctx.save();
-      ctx.globalAlpha = appear * (0.35 + k * 0.65);
-      ctx.fillStyle = STATUS_LABELS.thinking.color;
-      ctx.beginPath(); ctx.arc(pet.homeX + 118 + i * 24, GROUND_Y - 340 - i * 22 - k * 8, 7 + i * 2, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-  });
-  if (segment.motion === 'waiting') PETS.forEach((pet, i) => {
-    drawText('?', pet.homeX + 130, GROUND_Y - 330 + Math.sin(t / 180 + i) * 8, { font: FONT_EN, size: 64, color: STATUS_LABELS.waiting.color, weight: 700, alpha: appear });
-  });
-  if (segment.motion === 'review') PETS.forEach((pet, i) => {
-    drawText('✓', pet.homeX + 132, GROUND_Y - 330 + Math.sin(t / 200 + i) * 6, { font: FONT_EN, size: 56, color: STATUS_LABELS.review.color, weight: 700, alpha: appear });
-  });
-  if (segment.motion === 'failed') PETS.forEach((pet, i) => {
-    drawText('!', pet.homeX + 128, GROUND_Y - 330, { font: FONT_EN, size: 64, color: STATUS_LABELS.failed.color, weight: 700, alpha: appear * (0.6 + 0.4 * Math.abs(Math.sin(t / 120))) });
-  });
-  if (segment.motion === 'jumping') drawConfetti(elapsedMs);
+// ---------- roll call carousel ----------
+const CAROUSEL = { y: 820, spacing: 470, start: T.wipe1, holdMs: 600, glideMs: 300 };
+function carouselTravel(t) {
+  const local = t - CAROUSEL.start - 260;
+  if (local <= 0) return 0;
+  const step = CAROUSEL.holdMs + CAROUSEL.glideMs;
+  const k = Math.floor(local / step);
+  const inStep = local - k * step;
+  const glide = inStep < CAROUSEL.holdMs ? 0 : easeInOutCubic((inStep - CAROUSEL.holdMs) / CAROUSEL.glideMs);
+  return Math.min(CAST.length - 1, k + glide);
 }
 
-// ---------- scene: look around ----------
-// A star circles the trio at 22.5 degrees per 180 ms, in step with the 16 look frames.
-const LOOK_DURATION_MS = cycleMs('look');
+function drawCarousel(t) {
+  if (formationVisible(t)) return;
+  const travel = carouselTravel(t);
+  const focus = Math.round(travel);
+  const settle = 1 - Math.abs(travel - focus) * 2;
 
-function drawLookStar(t) {
-  const alpha = presence(t, LOOK_START_MS - 200, LOOK_START_MS + LOOK_DURATION_MS + 200, 250);
-  if (alpha <= 0) return;
-  const degrees = (t - LOOK_START_MS) / LOOK_DURATION_MS * 360;
-  const radians = (degrees - 90) * Math.PI / 180;
-  const cx = W / 2 + Math.cos(radians) * 780;
-  const cy = GROUND_Y - 210 + Math.sin(radians) * 300;
-  for (let i = 1; i <= 8; i++) {
-    const trail = (degrees - i * 3.2 - 90) * Math.PI / 180;
-    ctx.save();
-    ctx.globalAlpha = alpha * (1 - i / 9) * 0.4;
-    ctx.fillStyle = '#f2a3b3';
-    ctx.beginPath(); ctx.arc(W / 2 + Math.cos(trail) * 780, GROUND_Y - 210 + Math.sin(trail) * 300, 13 - i, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }
+  // spotlight behind the focused pet
+  const pet = CAST[focus];
   ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.translate(cx, cy);
-  ctx.rotate(t / 400);
-  ctx.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? 34 : 15;
-    const a = i * Math.PI / 5 - Math.PI / 2;
-    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-  }
-  ctx.closePath();
-  ctx.fillStyle = '#ffd36e';
-  ctx.fill();
-  ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeStyle = '#e7a93a'; ctx.stroke();
+  const glow = ctx.createRadialGradient(W / 2, CAROUSEL.y - 180, 30, W / 2, CAROUSEL.y - 180, 330);
+  glow.addColorStop(0, 'rgba(255,255,255,0.95)');
+  glow.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 0.35 + 0.35 * clamp01(settle);
+  ctx.strokeStyle = pet.color; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.arc(W / 2, CAROUSEL.y - 190, 230, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
+
+  CAST.forEach((p, i) => {
+    const x = Math.round(W / 2 + (i - travel) * CAROUSEL.spacing);
+    if (x < -260 || x > W + 260) return;
+    const holds = p.holdsMs.waving;
+    const column = columnAt(holds, t - CAROUSEL.start);
+    const distance = Math.abs(i - travel);
+    ctx.save();
+    ctx.globalAlpha = 1 - clamp01((distance - 1.2) / 1.6) * 0.55;
+    drawShadow(x, CAROUSEL.y);
+    drawCell(p.id, STATE_ROWS.waving, column, x, CAROUSEL.y);
+    ctx.restore();
+  });
+
+  // name card
+  const stepStart = CAROUSEL.start + 260 + focus * (CAROUSEL.holdMs + CAROUSEL.glideMs) - CAROUSEL.glideMs / 2;
+  const pop = easeOutBack(progress(t, stepStart, stepStart + 380));
+  const cardY = CAROUSEL.y + 92;
+  withScale(W / 2, cardY, 0.6 + 0.4 * pop, () => {
+    drawPill(W / 2, cardY, 440, 110, '#ffffff', { stroke: pet.color });
+    drawText(COPY.name(pet), W / 2, cardY - 16, { size: LANG === 'ja' && COPY.name(pet).length > 5 ? 40 : 50, weight: LANG === 'ko' ? '' : 700 });
+    drawText(COPY.subName(pet), W / 2, cardY + 30, { font: LANG === 'en' ? '"M PLUS Rounded 1c", sans-serif' : FONT_EN, size: 24, color: INK_SOFT, weight: 600 });
+  });
+  drawText(`${String(focus + 1).padStart(2, '0')} / ${CAST.length}`, W / 2 + 330, cardY - 36, { font: FONT_EN, size: 26, color: pet.color, weight: 700 });
 }
 
-// ---------- scene: outro ----------
+// ---------- wipes ----------
+const WIPE_COLORS = ['#fbd3dc', '#cfe2f5', '#fbe9b4'];
+function drawWipe(t, mid) {
+  const start = mid - T.wipeHalf, end = mid + T.wipeHalf;
+  if (t < start || t > end) return;
+  const R = 1250;
+  WIPE_COLORS.forEach((color, i) => {
+    const delay = i * 60;
+    ctx.save();
+    ctx.fillStyle = color;
+    if (t < mid) {
+      const r = easeInCubic(progress(t, start + delay, mid)) * R;
+      ctx.beginPath(); ctx.arc(W / 2, H / 2, r, 0, Math.PI * 2); ctx.fill();
+    } else {
+      const hole = easeOutCubic(progress(t, mid + (2 - i) * 60, end)) * R;
+      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(W / 2, H / 2, hole, 0, Math.PI * 2, true); ctx.fill('evenodd');
+    }
+    ctx.restore();
+  });
+}
+
+// ---------- outro ----------
 function drawOutro(t) {
-  const alpha = presence(t, OUTRO_START_MS, DURATION_MS - 200, 450);
-  if (alpha <= 0) return;
-  withScale(W / 2, 190, 0.7 + 0.3 * easeOutBack(progress(t, OUTRO_START_MS, OUTRO_START_MS + 650)), () => {
-    drawText('Chiikawa Dots Pets', W / 2, 190, { font: FONT_EN, size: 116, alpha, weight: 700 });
+  drawTitle(t, T.outro + 100, DURATION_MS - 200, 96, 112);
+  drawText(COPY.outro, W / 2, 182, { size: 38, color: INK_SOFT, alpha: presence(t, T.outro + 500, DURATION_MS - 200, 400), weight: LANG === 'ko' ? '' : 700 });
+  const urlAlpha = presence(t, T.outro + 800, DURATION_MS - 200, 400);
+  const pop = easeOutBack(progress(t, T.outro + 800, T.outro + 1300));
+  withScale(W / 2, 252, pop, () => {
+    drawPill(W / 2, 252, 760, 70, INK, { alpha: urlAlpha });
+    drawText('github.com/heelee912/chiikawa-dots-pets', W / 2, 254, { font: FONT_EN, size: 31, color: '#fff6ea', alpha: urlAlpha, weight: 600 });
   });
-  drawText('치이카와 · 하치와레 · 우사기', W / 2, 292, { font: FONT_KO, size: 50, color: INK_SOFT, alpha: presence(t, OUTRO_START_MS + 250, DURATION_MS - 200, 400) });
-  const urlAlpha = presence(t, OUTRO_START_MS + 550, DURATION_MS - 200, 400);
-  withScale(W / 2, 398, easeOutBack(progress(t, OUTRO_START_MS + 550, OUTRO_START_MS + 1050)), () => {
-    drawPill(W / 2, 398, 780, 84, INK, { alpha: urlAlpha });
-    drawText('github.com/heelee912/chiikawa-dots-pets', W / 2, 400, { font: FONT_EN, size: 34, color: '#fff6ea', alpha: urlAlpha, weight: 600 });
-  });
+}
+
+function drawFooter(t) {
+  const alpha = 0.85 * presence(t, 0, DURATION_MS - 80, 400);
+  drawText(COPY.footer, W / 2, H - 34, { font: `${FONT_EN.split(',')[0]}, ${COPY.font}`, size: 22, color: '#b8a59a', alpha, weight: 600 });
 }
 
 // ---------- composition ----------
-function drawPets(t) {
-  const endFade = 1 - easeInCubic(progress(t, DURATION_MS - 600, DURATION_MS - 60));
-  PETS.forEach((pet, index) => {
-    const frame = petFrameAt(index, t);
-    if (!frame || frame.x > W + 250) return;
-    ctx.save();
-    ctx.globalAlpha = endFade;
-    const clipRadius = revealClip(index, t);
-    if (clipRadius !== null) {
-      ctx.beginPath();
-      ctx.arc(pet.homeX, GROUND_Y - 190, clipRadius, 0, Math.PI * 2);
-      ctx.clip();
-    }
-    drawShadow(frame.x, endFade);
-    drawSpriteCell(pet.id, frame.row, frame.column, frame.x);
-    ctx.restore();
-  });
-}
-
 function renderAt(t) {
   t = ((t % DURATION_MS) + DURATION_MS) % DURATION_MS;
   drawBackground(t);
 
-  drawIntroTitle(t);
-  drawCaption(t, 2700, ARRIVAL_MS - 150, '화면 위를 뛰어다녀요', 'Runs across your screen');
-  drawCaption(t, ARRIVAL_MS - 50, STATUS_START_MS - 250, '반갑게 손을 흔들고', 'Waves hello');
-  drawCaption(t, STATUS_START_MS - 150, STATUS_END_MS + 150, '상태마다 다른 모션으로 반응해요', 'A motion for every Codex pet state');
-  drawCaption(t, STATUS_END_MS + 250, OUTRO_START_MS - 100, '16방향으로 시선을 돌려요', 'Looks around in 16 directions');
-  drawStatusPill(t);
-  drawOutro(t);
+  // intro
+  drawTitle(t, 150, 5000, 128, 132);
+  drawText(COPY.subtitle, W / 2, 238, { size: 46, color: INK_SOFT, alpha: presence(t, 700, 5000, 420), weight: LANG === 'ko' ? '' : 700 });
 
-  drawRunDust(t);
-  PETS.forEach((pet, index) => drawRevealRing(pet, index, t));
-  drawPets(t);
-  drawStatusEffects(t);
-  drawNameTags(t);
-  drawLookStar(t);
-  drawFanWorkNotice(t);
+  drawCaption(t, T.runStart - 100, T.wipe1 - 200, COPY.run);
+  drawCaption(t, T.wipe1 + 200, T.wipe2 - 200, COPY.meet);
+  drawCaption(t, T.statesIdle + 250, T.statesEnd + 350, COPY.states);
+  drawCaption(t, T.look + 50, T.lookEnd + 50, COPY.look);
+  drawStatusPill(t);
+
+  if (formationVisible(t)) {
+    for (const pet of CAST) drawDust(pet, t);
+    for (const pet of CAST) drawRevealBurst(pet, t);
+  }
+  drawFormation(t);
+  drawCarousel(t);
+  drawStar(t);
+  const jumpStart = T.states[4][1];
+  if (t >= jumpStart && t < jumpStart + 1800) drawConfetti(t - jumpStart - 200, 560);
+  if (t >= T.outroJump) drawConfetti(t - T.outroJump - 300, 600);
+  if (t >= T.outro) drawOutro(t);
+
+  drawWipe(t, T.wipe1);
+  drawWipe(t, T.wipe2);
+  drawFooter(t);
 }
 
-// render.py uses this to find the exact moments a sprite frame changes.
+// render.py uses this to land GIF frames exactly on sprite changes.
 function spriteSignatureAt(t) {
-  return PETS.map((_, index) => {
-    const frame = petFrameAt(index, t);
-    return frame ? `${frame.row}:${frame.column}` : '-';
+  if (!formationVisible(t)) {
+    const travel = carouselTravel(t);
+    return 'c' + CAST.map(p => columnAt(p.holdsMs.waving, t - CAROUSEL.start)).join('') + ':' + Math.round(travel * 100);
+  }
+  return CAST.map(pet => {
+    const seg = segmentAt(TRACKS[pet.id], t);
+    if (!seg || t < revealTime(pet.id) - 100) return '-';
+    if (seg.state === 'look') { const c = lookCell(pet, t); return `${c.row}${c.column}`; }
+    return `${STATE_ROWS[seg.state]}${columnAt(pet.holdsMs[seg.state], t - seg.start)}`;
   }).join('|');
+}
+
+async function load() {
+  const data = await (await fetch('cast.json')).json();
+  CAST = data.cast.map(p => ({ ...p, nameJa: JA_NAMES[p.id] }));
+  await Promise.all(CAST.map(p => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { sheets[p.id] = img; resolve(); };
+    img.onerror = () => reject(new Error(`missing spritesheet for ${p.id}`));
+    img.src = `../pets/${p.id}/spritesheet.png`;
+  })));
+  buildTracks();
+  const allText = Object.values(COPY).filter(v => typeof v === 'string').join('') + Object.values(COPY.stateLabels).join('') +
+    CAST.map(p => COPY.name(p) + COPY.subName(p)).join('');
+  await Promise.all([
+    document.fonts.load(`74px ${COPY.font}`, allText),
+    document.fonts.load(`700 74px ${COPY.font}`, allText),
+    document.fonts.load(`700 80px ${FONT_EN}`, 'Chiikawa Dots Pets 0123456789/ github.com'),
+    document.fonts.load(`600 40px ${FONT_EN}`, allText),
+    document.fonts.load(`600 24px "M PLUS Rounded 1c"`, Object.values(JA_NAMES).join('')),
+  ]);
+  await document.fonts.ready;
+  return true;
 }
 
 window.PROMO_DURATION_MS = DURATION_MS;
 window.renderAt = renderAt;
 window.spriteSignatureAt = spriteSignatureAt;
-window.promoReady = (async () => {
-  await Promise.all([
-    document.fonts.load(`76px ${FONT_KO}`, '치이카와 하치와레 우사기'),
-    document.fonts.load(`700 80px ${FONT_EN}`, 'Chiikawa'),
-    document.fonts.load(`600 80px ${FONT_EN}`, 'Chiikawa'),
-    loadSheets(),
-  ]);
-  await document.fonts.ready;
-  return true;
-})();
+window.promoReady = load();
+document.documentElement.lang = LANG;
 
-// Live playback unless render.py drives the clock with ?export.
-if (!new URLSearchParams(location.search).has('export')) {
+if (!params.has('export')) {
   window.promoReady.then(() => {
     const startedAt = performance.now();
     const tick = now => { renderAt(now - startedAt); requestAnimationFrame(tick); };

@@ -6,7 +6,7 @@
 set -eu
 
 REPO_RAW_URL="https://raw.githubusercontent.com/heelee912/chiikawa-dots-pets/main"
-AVAILABLE_PETS="chiikawa hachiware usagi"
+AVAILABLE_PETS="chiikawa hachiware usagi momonga shisa rakko kurimanju siren furuhonya anoko dekatsuyo"
 REQUESTED_PETS=$(printf '%s' "${CHIIKAWA_PETS:-$AVAILABLE_PETS}" | tr ',' ' ')
 PETS_ROOT="${CODEX_HOME:-$HOME/.codex}/pets"
 
